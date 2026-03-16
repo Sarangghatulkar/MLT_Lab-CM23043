@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Assignment 1 – Webcam Object Classification</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.0/dist/mobilenet.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #f0f4f8;
+      color: #222;
+      padding: 24px 16px 48px;
+    }
+    .container { max-width: 680px; margin: 0 auto; }
+
+    /* Header */
+    .header {
+      background: #1e3a5f;
+      color: #fff;
+      border-radius: 10px;
+      padding: 18px 22px;
+      margin-bottom: 18px;
+    }
+    .badge {
+      display: inline-block;
+      background: rgba(255,255,255,0.2);
+      font-size: 11px;
+      padding: 2px 10px;
+      border-radius: 20px;
+      margin-bottom: 8px;
+      letter-spacing: 1px;
+    }
+    .header h2 { font-size: 1.2rem; font-weight: 700; }
+    .header p  { font-size: 13px; opacity: 0.75; margin-top: 4px; }
+
+    /* Status */
+    .status-bar {
+      background: #fff;
+      border: 1px solid #dde3ed;
+      border-radius: 8px;
+      padding: 10px 16px;
+      font-size: 13px;
+      color: #444;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .dot { width: 9px; height: 9px; border-radius: 50%; background: #f59e0b; flex-shrink: 0; }
+    .dot.green { background: #22c55e; animation: pulse 1.4s infinite; }
+    .dot.red   { background: #ef4444; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+    /* Video */
+    video {
+      display: block; width: 100%;
+      border-radius: 10px;
+      border: 2px solid #dde3ed;
+      background: #111;
+      margin-bottom: 14px;
+    }
+
+    /* Buttons */
+    .btn-row { display: flex; gap: 10px; margin-bottom: 18px; flex-wrap: wrap; }
+    .btn {
+      padding: 9px 20px; border: none; border-radius: 7px;
+      font-size: 13px; font-family: 'Segoe UI', sans-serif;
+      font-weight: 600; cursor: pointer;
+      transition: opacity 0.2s, transform 0.1s;
+    }
+    .btn:hover:not(:disabled) { opacity: 0.88; transform: translateY(-1px); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+    .btn-primary { background: #1e3a5f; color: #fff; }
+    .btn-danger  { background: #ef4444; color: #fff; }
+    .btn-outline { background: #fff; color: #1e3a5f; border: 1.5px solid #1e3a5f; }
+
+    /* Predictions */
+    .pred-section { display: none; }
+    .section-title {
+      font-size: 12px; font-weight: 700; color: #888;
+      text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;
+    }
+    .pred-card {
+      background: #fff; border: 1px solid #dde3ed;
+      border-radius: 9px; padding: 12px 16px;
+      margin-bottom: 10px;
+      display: flex; align-items: center; gap: 14px;
+    }
+    .pred-card.top { border-left: 4px solid #1e3a5f; }
+    .rank-badge {
+      width: 30px; height: 30px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px; font-weight: 700; flex-shrink: 0;
+    }
+    .rank-1 { background: #1e3a5f; color: #fff; }
+    .rank-2 { background: #e2e8f0; color: #334155; }
+    .rank-3 { background: #f1f5f9; color: #64748b; }
+    .pred-info { flex: 1; }
+    .pred-label { font-size: 14px; font-weight: 600; margin-bottom: 5px; color: #1a1a2e; }
+    .pred-bar-track { height: 7px; background: #e2e8f0; border-radius: 5px; overflow: hidden; }
+    .bar-1 { height:100%; background:#1e3a5f; border-radius:5px; transition:width .4s; }
+    .bar-2 { height:100%; background:#64748b; border-radius:5px; transition:width .4s; }
+    .bar-3 { height:100%; background:#94a3b8; border-radius:5px; transition:width .4s; }
+    .pred-pct { font-size: 14px; font-weight: 700; color: #1e3a5f; flex-shrink: 0; }
+
+    .info-box {
+      background: #fff; border: 1px solid #dde3ed;
+      border-radius: 8px; padding: 10px 16px;
+      font-size: 13px; color: #555; margin-top: 4px;
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <div class="header">
+    <div class="badge">ASSIGNMENT 1</div>
+    <h2>Webcam Object Classification</h2>
+    <p>Real-time classification using MobileNet — Top 3 predictions updated every 2 seconds</p>
+  </div>
+
+  <div class="status-bar">
+    <div class="dot" id="dot"></div>
+    <span id="statusText">Loading MobileNet model, please wait...</span>
+  </div>
+
+  <video id="video" autoplay playsinline muted></video>
+
+  <div class="btn-row">
+    <button class="btn btn-primary" id="startBtn" disabled>▶ Start Webcam</button>
+    <button class="btn btn-danger"  id="stopBtn"  disabled>■ Stop</button>
+    <button class="btn btn-outline" id="snapBtn"  disabled>⟳ Classify Now</button>
+  </div>
+
+  <div class="pred-section" id="predSection">
+    <div class="section-title">Top-3 Predictions</div>
+    <div id="predCards"></div>
+    <div class="info-box" id="inferInfo"></div>
+  </div>
+
+</div>
+<script>
+  let model = null, stream = null, loopId = null;
+  const video    = document.getElementById('video');
+  const dot      = document.getElementById('dot');
+  const statusTx = document.getElementById('statusText');
+  const startBtn = document.getElementById('startBtn');
+  const stopBtn  = document.getElementById('stopBtn');
+  const snapBtn  = document.getElementById('snapBtn');
+  const section  = document.getElementById('predSection');
+  const cards    = document.getElementById('predCards');
+  const inferInf = document.getElementById('inferInfo');
+
+  function setStatus(msg, color) {
+    statusTx.textContent = msg;
+    dot.className = 'dot ' + (color || '');
+  }
+
+  mobilenet.load().then(m => {
+    model = m;
+    setStatus('Model loaded! Click "Start Webcam" to begin.', 'green');
+    startBtn.disabled = false;
+  });
+
+  startBtn.addEventListener('click', async () => {
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      video.srcObject = stream;
+      startBtn.disabled = true;
+      stopBtn.disabled  = false;
+      snapBtn.disabled  = false;
+      setStatus('Webcam active — classifying every 2 seconds.', 'green');
+      loopId = setInterval(classifyFrame, 2000);
+    } catch(e) {
+      setStatus('Webcam error: ' + e.message, 'red');
+    }
+  });
+
+  stopBtn.addEventListener('click', () => {
+    if (stream) stream.getTracks().forEach(t => t.stop());
+    if (loopId) clearInterval(loopId);
+    video.srcObject = null;
+    startBtn.disabled = false;
+    stopBtn.disabled  = true;
+    snapBtn.disabled  = true;
+    setStatus('Webcam stopped.', 'red');
+  });
+
+  snapBtn.addEventListener('click', classifyFrame);
+
+  async function classifyFrame() {
+    if (!model || video.readyState < 2) return;
+    const t0    = performance.now();
+    const preds = await model.classify(video, 3);
+    const ms    = (performance.now() - t0).toFixed(0);
+
+    section.style.display = 'block';
+    cards.innerHTML = '';
+
+    preds.forEach((p, i) => {
+      const pct = (p.probability * 100).toFixed(1);
+      const div = document.createElement('div');
+      div.className = 'pred-card' + (i === 0 ? ' top' : '');
+      div.innerHTML = `
+        <div class="rank-badge rank-${i+1}">${i+1}</div>
+        <div class="pred-info">
+          <div class="pred-label">${p.className.split(',')[0]}</div>
+          <div class="pred-bar-track">
+            <div class="bar-${i+1}" style="width:${pct}%"></div>
+          </div>
+        </div>
+        <div class="pred-pct">${pct}%</div>
+      `;
+      cards.appendChild(div);
+    });
+
+    inferInf.innerHTML = `⏱ Inference time: <strong>${ms} ms</strong> &nbsp;|&nbsp; Last updated: <strong>${new Date().toLocaleTimeString()}</strong>`;
+  }
+</script>
+</body>
+</html>
