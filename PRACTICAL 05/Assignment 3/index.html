@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Assignment 3 – FPS & Performance Analysis</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.0/dist/mobilenet.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #f0f4f8;
+      color: #222;
+      padding: 24px 16px 48px;
+    }
+    .container { max-width: 740px; margin: 0 auto; }
+
+    /* Header */
+    .header {
+      background: #4c1d95;
+      color: #fff;
+      border-radius: 10px;
+      padding: 18px 22px;
+      margin-bottom: 18px;
+    }
+    .badge {
+      display: inline-block;
+      background: rgba(255,255,255,0.2);
+      font-size: 11px;
+      padding: 2px 10px;
+      border-radius: 20px;
+      margin-bottom: 8px;
+      letter-spacing: 1px;
+    }
+    .header h2 { font-size: 1.2rem; font-weight: 700; }
+    .header p  { font-size: 13px; opacity: 0.75; margin-top: 4px; }
+
+    /* Status */
+    .status-bar {
+      background: #fff; border: 1px solid #dde3ed;
+      border-radius: 8px; padding: 10px 16px;
+      font-size: 13px; color: #444;
+      margin-bottom: 16px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .dot { width: 9px; height: 9px; border-radius: 50%; background: #f59e0b; flex-shrink: 0; }
+    .dot.green { background: #22c55e; animation: pulse 1.4s infinite; }
+    .dot.red   { background: #ef4444; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+    video { display: none; }
+    .canvas-wrap {
+      background: #111; border-radius: 10px;
+      overflow: hidden; border: 2px solid #dde3ed;
+      margin-bottom: 14px;
+    }
+    canvas#videoCanvas { display: block; width: 100%; }
+
+    /* Controls row */
+    .controls {
+      display: flex; gap: 10px; align-items: center;
+      flex-wrap: wrap; margin-bottom: 18px;
+    }
+    .btn {
+      padding: 9px 20px; border: none; border-radius: 7px;
+      font-size: 13px; font-family: 'Segoe UI', sans-serif;
+      font-weight: 600; cursor: pointer;
+      transition: opacity .2s, transform .1s;
+    }
+    .btn:hover:not(:disabled) { opacity: .88; transform: translateY(-1px); }
+    .btn:disabled { opacity: .4; cursor: not-allowed; transform: none; }
+    .btn-purple { background: #4c1d95; color: #fff; }
+    .btn-danger { background: #ef4444; color: #fff; }
+    .btn-gray   { background: #fff; color: #555; border: 1.5px solid #ccc; }
+
+    select {
+      padding: 8px 12px; border: 1.5px solid #ccc;
+      border-radius: 7px; font-size: 13px;
+      font-family: 'Segoe UI', sans-serif;
+      background: #fff; color: #333; cursor: pointer;
+    }
+
+    /* Metric cards */
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+    @media(max-width:500px){ .metrics { grid-template-columns: 1fr 1fr; } }
+    .metric-card {
+      background: #fff; border: 1px solid #dde3ed;
+      border-radius: 9px; padding: 14px 12px; text-align: center;
+    }
+    .metric-card .m-val {
+      font-size: 1.7rem; font-weight: 800; color: #4c1d95;
+      line-height: 1;
+    }
+    .metric-card .m-lbl {
+      font-size: 11px; color: #888;
+      text-transform: uppercase; letter-spacing: 1px; margin-top: 5px;
+    }
+    .metric-card.highlight { border-color: #4c1d95; border-width: 2px; }
+
+    /* FPS chart */
+    .chart-box {
+      background: #fff; border: 1px solid #dde3ed;
+      border-radius: 9px; padding: 14px;
+      margin-bottom: 18px;
+    }
+    .chart-title {
+      font-size: 12px; font-weight: 700; color: #888;
+      text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;
+    }
+    canvas#fpsChart { display: block; width: 100%; height: 100px; }
+
+    /* Log table */
+    .log-box {
+      background: #fff; border: 1px solid #dde3ed;
+      border-radius: 9px; overflow: hidden;
+      margin-bottom: 18px; display: none;
+    }
+    .log-header {
+      background: #f8fafc; padding: 10px 16px;
+      font-size: 12px; font-weight: 700; color: #888;
+      text-transform: uppercase; letter-spacing: 1px;
+      border-bottom: 1px solid #dde3ed;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th { background: #f8fafc; padding: 8px 12px; border-bottom: 1px solid #dde3ed; text-align: left; font-weight: 600; color: #555; font-size: 12px; }
+    td { padding: 8px 12px; border-bottom: 1px solid #f0f4f8; font-family: monospace; font-size: 12px; }
+    tr:last-child td { border-bottom: none; }
+    .ms-fast   { color: #16a34a; font-weight: 700; }
+    .ms-medium { color: #d97706; font-weight: 700; }
+    .ms-slow   { color: #dc2626; font-weight: 700; }
+
+    /* Analysis */
+    .analysis-box {
+      background: #fff; border: 1px solid #dde3ed;
+      border-left: 4px solid #4c1d95;
+      border-radius: 9px; padding: 16px;
+      font-size: 13px; color: #444;
+      line-height: 1.8; display: none;
+    }
+    .analysis-box strong { color: #4c1d95; }
+    .verdict {
+      display: inline-block;
+      margin-top: 8px;
+      background: #ede9fe;
+      color: #4c1d95;
+      font-weight: 700;
+      padding: 4px 14px;
+      border-radius: 20px;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <div class="header">
+    <div class="badge">ASSIGNMENT 3</div>
+    <h2>FPS Measurement & Performance Analysis</h2>
+    <p>Measures render FPS vs inference speed and logs the performance impact of real-time MobileNet inference</p>
+  </div>
+
+  <div class="status-bar">
+    <div class="dot" id="dot"></div>
+    <span id="statusText">Loading MobileNet model, please wait...</span>
+  </div>
+
+  <!-- Video canvas -->
+  <div class="canvas-wrap">
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="videoCanvas"></canvas>
+  </div>
+
+  <!-- Controls -->
+  <div class="controls">
+    <button class="btn btn-purple" id="startBtn" disabled>▶ Start Webcam</button>
+    <button class="btn btn-danger" id="stopBtn"  disabled>■ Stop</button>
+    <button class="btn btn-gray"   id="clearBtn" disabled>↺ Reset Stats</button>
+    <select id="intervalSel">
+      <option value="200">Classify every 200 ms</option>
+      <option value="500" selected>Classify every 500 ms</option>
+      <option value="1000">Classify every 1000 ms</option>
+      <option value="2000">Classify every 2000 ms</option>
+    </select>
+  </div>
+
+  <!-- Metrics -->
+  <div class="metrics">
+    <div class="metric-card highlight">
+      <div class="m-val" id="renderFPS">0</div>
+      <div class="m-lbl">Render FPS</div>
+    </div>
+    <div class="metric-card highlight">
+      <div class="m-val" id="inferenceFPS">0</div>
+      <div class="m-lbl">Inference FPS</div>
+    </div>
+    <div class="metric-card">
+      <div class="m-val" id="inferenceMs">—</div>
+      <div class="m-lbl">Last Inference (ms)</div>
+    </div>
+    <div class="metric-card">
+      <div class="m-val" id="minMs">—</div>
+      <div class="m-lbl">Min (ms)</div>
+    </div>
+    <div class="metric-card">
+      <div class="m-val" id="maxMs">—</div>
+      <div class="m-lbl">Max (ms)</div>
+    </div>
+    <div class="metric-card">
+      <div class="m-val" id="avgMs">—</div>
+      <div class="m-lbl">Avg (ms)</div>
+    </div>
+  </div>
+
+  <!-- FPS bar chart -->
+  <div class="chart-box">
+    <div class="chart-title">Render FPS History (last 30 seconds)</div>
+    <canvas id="fpsChart"></canvas>
+  </div>
+
+  <!-- Log -->
+  <div class="log-box" id="logBox">
+    <div class="log-header">Inference Log (last 15 entries)</div>
+    <table>
+      <thead>
+        <tr><th>#</th><th>Time</th><th>Inference (ms)</th><th>Top Prediction</th><th>Confidence</th></tr>
+      </thead>
+      <tbody id="logBody"></tbody>
+    </table>
+  </div>
+
+  <!-- Analysis -->
+  <div class="analysis-box" id="analysisBox"></div>
+
+</div>
+<script>
+  let model = null, stream = null, animId = null, classifyTimer = null;
+  let lastPreds = [];
+  let frameCount = 0, renderFPS = 0, lastFpsTime = performance.now();
+  let inferCount = 0, totalMs = 0, minMs = Infinity, maxMs = 0;
+  let inferLog = [], fpsHistory = [];
+
+  const video  = document.getElementById('video');
+  const vCanvas = document.getElementById('videoCanvas');
+  const vCtx   = vCanvas.getContext('2d');
+  const fCanvas = document.getElementById('fpsChart');
+  const fCtx   = fCanvas.getContext('2d');
+  const dot    = document.getElementById('dot');
+  const statusTx = document.getElementById('statusText');
+
+  function setStatus(msg, color) {
+    statusTx.textContent = msg;
+    dot.className = 'dot ' + (color || '');
+  }
+
+  mobilenet.load().then(m => {
+    model = m;
+    setStatus('Model loaded! Click "Start Webcam" to begin.', 'green');
+    document.getElementById('startBtn').disabled = false;
+  });
+
+  document.getElementById('startBtn').addEventListener('click', async () => {
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      video.srcObject = stream;
+      await new Promise(r => video.onloadedmetadata = r);
+      vCanvas.width  = video.videoWidth  || 640;
+      vCanvas.height = video.videoHeight || 480;
+
+      document.getElementById('startBtn').disabled = true;
+      document.getElementById('stopBtn').disabled  = false;
+      document.getElementById('clearBtn').disabled = false;
+      document.getElementById('logBox').style.display = 'block';
+      setStatus('Webcam active — measuring performance...', 'green');
+
+      frameCount = 0; lastFpsTime = performance.now();
+
+      // Render loop
+      (function drawLoop() {
+        vCtx.drawImage(video, 0, 0, vCanvas.width, vCanvas.height);
+        drawVideoOverlay();
+        frameCount++;
+        const now = performance.now();
+        if (now - lastFpsTime >= 1000) {
+          renderFPS = Math.round(frameCount * 1000 / (now - lastFpsTime));
+          frameCount = 0; lastFpsTime = now;
+          document.getElementById('renderFPS').textContent = renderFPS;
+          fpsHistory.push(renderFPS);
+          if (fpsHistory.length > 30) fpsHistory.shift();
+          drawFpsChart();
+        }
+        animId = requestAnimationFrame(drawLoop);
+      })();
+
+      startInferLoop();
+    } catch(e) { setStatus('Webcam error: ' + e.message, 'red'); }
+  });
+
+  function startInferLoop() {
+    if (classifyTimer) clearInterval(classifyTimer);
+    const ms = parseInt(document.getElementById('intervalSel').value);
+    classifyTimer = setInterval(async () => {
+      if (!model || video.readyState < 2) return;
+      const t0 = performance.now();
+      lastPreds = await model.classify(video, 3);
+      const elapsed = Math.round(performance.now() - t0);
+
+      inferCount++;
+      totalMs += elapsed;
+      if (elapsed < minMs) minMs = elapsed;
+      if (elapsed > maxMs) maxMs = elapsed;
+
+      const top = lastPreds[0];
+      inferLog.unshift({ elapsed, label: top.className.split(',')[0], conf: (top.probability*100).toFixed(1), time: new Date().toLocaleTimeString() });
+      if (inferLog.length > 15) inferLog.pop();
+
+      document.getElementById('inferenceMs').textContent = elapsed;
+      document.getElementById('inferenceFPS').textContent = (1000 / elapsed).toFixed(1);
+      document.getElementById('minMs').textContent = minMs;
+      document.getElementById('maxMs').textContent = maxMs;
+      document.getElementById('avgMs').textContent = Math.round(totalMs / inferCount);
+
+      updateLog();
+      updateAnalysis(ms);
+    }, ms);
+  }
+
+  document.getElementById('intervalSel').addEventListener('change', () => {
+    if (classifyTimer) startInferLoop();
+  });
+
+  document.getElementById('stopBtn').addEventListener('click', () => {
+    if (stream) stream.getTracks().forEach(t => t.stop());
+    if (animId) cancelAnimationFrame(animId);
+    if (classifyTimer) clearInterval(classifyTimer);
+    classifyTimer = null;
+    vCtx.clearRect(0, 0, vCanvas.width, vCanvas.height);
+    document.getElementById('startBtn').disabled = false;
+    document.getElementById('stopBtn').disabled  = true;
+    setStatus('Webcam stopped.', 'red');
+  });
+
+  document.getElementById('clearBtn').addEventListener('click', () => {
+    inferCount = 0; totalMs = 0; minMs = Infinity; maxMs = 0;
+    inferLog = []; fpsHistory = [];
+    ['inferenceMs','inferenceFPS','minMs','maxMs','avgMs'].forEach(id => document.getElementById(id).textContent = '—');
+    document.getElementById('logBody').innerHTML = '';
+    document.getElementById('analysisBox').style.display = 'none';
+    fCtx.clearRect(0, 0, fCanvas.offsetWidth || 600, fCanvas.offsetHeight || 100);
+  });
+
+  function drawVideoOverlay() {
+    if (!lastPreds.length) return;
+    const lineH = 25, boxW = 290, boxH = lastPreds.length * lineH + 12;
+    vCtx.fillStyle = 'rgba(0,0,0,0.5)';
+    roundRect(vCtx, 10, 10, boxW, boxH, 7);
+    vCtx.fill();
+    lastPreds.forEach((p, i) => {
+      const txt = `${i+1}. ${p.className.split(',')[0]}  ${(p.probability*100).toFixed(1)}%`;
+      vCtx.font = i===0 ? 'bold 14px Segoe UI' : '13px Segoe UI';
+      vCtx.fillStyle = i===0 ? '#FFD700' : i===1 ? '#fff' : '#ccc';
+      vCtx.shadowColor = '#000'; vCtx.shadowBlur = 2;
+      vCtx.fillText(txt, 20, 30 + i * lineH);
+    });
+    vCtx.shadowBlur = 0;
+
+    // FPS badge
+    vCtx.fillStyle = 'rgba(76,29,149,0.8)';
+    roundRect(vCtx, vCanvas.width - 90, 10, 80, 24, 5);
+    vCtx.fill();
+    vCtx.fillStyle = '#fff';
+    vCtx.font = 'bold 13px Segoe UI';
+    vCtx.fillText(`FPS: ${renderFPS}`, vCanvas.width - 82, 27);
+  }
+
+  function drawFpsChart() {
+    const W = fCanvas.offsetWidth || 600, H = 100;
+    fCanvas.width = W; fCanvas.height = H;
+    fCtx.clearRect(0, 0, W, H);
+    if (fpsHistory.length < 2) return;
+    const max = Math.max(...fpsHistory, 30);
+    const bW = Math.max(6, (W - 20) / fpsHistory.length - 2);
+    fpsHistory.forEach((fps, i) => {
+      const bH = Math.max(4, (fps / max) * (H - 24));
+      const x = 10 + i * ((W - 20) / fpsHistory.length);
+      const y = H - 20 - bH;
+      fCtx.fillStyle = fps >= 20 ? '#22c55e' : fps >= 10 ? '#f59e0b' : '#ef4444';
+      fCtx.beginPath();
+      fCtx.roundRect(x, y, bW, bH, 2);
+      fCtx.fill();
+    });
+    fCtx.fillStyle = '#aaa'; fCtx.font = '10px Arial';
+    fCtx.fillText('FPS', 0, 10);
+    fCtx.fillText('0', 0, H - 8);
+  }
+
+  function updateLog() {
+    const body = document.getElementById('logBody');
+    body.innerHTML = '';
+    inferLog.forEach((e, i) => {
+      const cls = e.elapsed < 200 ? 'ms-fast' : e.elapsed < 600 ? 'ms-medium' : 'ms-slow';
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${inferCount - i}</td><td>${e.time}</td><td class="${cls}">${e.elapsed} ms</td><td>${e.label}</td><td>${e.conf}%</td>`;
+      body.appendChild(tr);
+    });
+  }
+
+  function updateAnalysis(interval) {
+    const avg = Math.round(totalMs / inferCount);
+    let verdict = '';
+    if (avg < 150)      verdict = '🟢 Excellent — fast enough for smooth real-time use.';
+    else if (avg < 400) verdict = '🟡 Good — suitable for real-time with moderate rate.';
+    else if (avg < 800) verdict = '🟠 Moderate — slight lag; reduce inference frequency.';
+    else                verdict = '🔴 Slow — too heavy for real-time; reduce interval.';
+
+    const box = document.getElementById('analysisBox');
+    box.style.display = 'block';
+    box.innerHTML = `
+      <strong>Performance Summary</strong><br/><br/>
+      Total inferences: <strong>${inferCount}</strong><br/>
+      Average inference time: <strong>${avg} ms</strong><br/>
+      Fastest: <strong>${minMs} ms</strong> &nbsp;|&nbsp; Slowest: <strong>${maxMs} ms</strong><br/>
+      Effective inference rate: <strong>${(1000/avg).toFixed(1)} per second</strong><br/>
+      Render FPS: <strong>${renderFPS}</strong> &nbsp;|&nbsp; Inference interval: <strong>${interval} ms</strong><br/><br/>
+      <strong>Explanation:</strong> MobileNet runs inference via TensorFlow.js on your CPU/GPU.
+      Each inference processes the video frame through ~3.4M parameters.
+      The render loop (requestAnimationFrame) runs independently at <strong>${renderFPS} FPS</strong>
+      so the video stays smooth even when inference is slow.<br/><br/>
+      <span class="verdict">${verdict}</span>
+    `;
+  }
+
+  function roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x+r, y);
+    ctx.lineTo(x+w-r, y); ctx.quadraticCurveTo(x+w, y, x+w, y+r);
+    ctx.lineTo(x+w, y+h-r); ctx.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
+    ctx.lineTo(x+r, y+h); ctx.quadraticCurveTo(x, y+h, x, y+h-r);
+    ctx.lineTo(x, y+r); ctx.quadraticCurveTo(x, y, x+r, y);
+    ctx.closePath();
+  }
+</script>
+</body>
+</html>
