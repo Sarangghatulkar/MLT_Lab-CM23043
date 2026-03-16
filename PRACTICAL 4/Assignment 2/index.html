@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Assignment 2 – MobileNet Accuracy on 5 Images</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.0/dist/mobilenet.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #f0f4f8;
+      color: #1a1a2e;
+      min-height: 100vh;
+      padding: 30px 20px;
+    }
+    h1 {
+      text-align: center;
+      font-size: 1.5rem;
+      color: #1a1a2e;
+      margin-bottom: 4px;
+    }
+    .subtitle {
+      text-align: center;
+      color: #666;
+      font-size: 0.85rem;
+      margin-bottom: 24px;
+    }
+    #status {
+      text-align: center;
+      background: #fff3cd;
+      border: 1px solid #ffc107;
+      padding: 10px 16px;
+      border-radius: 8px;
+      font-size: 0.88rem;
+      max-width: 700px;
+      margin: 0 auto 24px;
+      color: #856404;
+    }
+    .controls {
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 30px;
+    }
+    .controls label {
+      background: #1a1a2e;
+      color: #fff;
+      padding: 10px 20px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      transition: background 0.2s;
+    }
+    .controls label:hover { background: #2d2d50; }
+    input[type="file"] { display: none; }
+    #classifyAllBtn {
+      background: #e63946;
+      color: white;
+      border: none;
+      padding: 10px 28px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-family: 'Segoe UI', sans-serif;
+    }
+    #classifyAllBtn:hover { background: #c1121f; }
+    #classifyAllBtn:disabled { opacity: 0.4; cursor: not-allowed; }
+    #clearBtn {
+      background: #adb5bd;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+    #clearBtn:hover { background: #868e96; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 16px;
+      max-width: 1100px;
+      margin: 0 auto 30px;
+    }
+    .img-card {
+      background: #fff;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+      position: relative;
+    }
+    .img-card img {
+      width: 100%;
+      height: 160px;
+      object-fit: cover;
+      display: block;
+    }
+    .img-card .card-body { padding: 12px; }
+    .img-card .img-num {
+      font-size: 0.7rem;
+      color: #aaa;
+      margin-bottom: 4px;
+    }
+    .img-card .pred-item {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.78rem;
+      padding: 3px 0;
+      border-bottom: 1px solid #f0f0f0;
+      color: #333;
+    }
+    .img-card .pred-item:last-child { border-bottom: none; }
+    .conf { color: #e63946; font-weight: 600; }
+    .top1 { background: #fff8f0; }
+    .badge-num {
+      position: absolute;
+      top: 8px; left: 8px;
+      background: #1a1a2e;
+      color: #fff;
+      font-size: 0.7rem;
+      padding: 3px 8px;
+      border-radius: 20px;
+    }
+    .spinner {
+      font-size: 0.78rem;
+      color: #888;
+      padding: 8px 0;
+    }
+
+    /* Summary table */
+    #summarySection {
+      max-width: 700px;
+      margin: 0 auto 40px;
+      background: #fff;
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+      display: none;
+    }
+    #summarySection h2 {
+      font-size: 1.1rem;
+      margin-bottom: 16px;
+      color: #1a1a2e;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.83rem;
+    }
+    th {
+      background: #1a1a2e;
+      color: #fff;
+      padding: 8px 12px;
+      text-align: left;
+    }
+    td {
+      padding: 8px 12px;
+      border-bottom: 1px solid #eee;
+      color: #333;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:nth-child(even) { background: #f9f9f9; }
+    .avg-row td { font-weight: bold; background: #fff8f0; color: #c1121f; }
+    .note {
+      font-size: 0.75rem;
+      color: #888;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h1>📊 MobileNet Accuracy Test</h1>
+  <p class="subtitle">Assignment 2 — Classify 5 Different Images & Compare</p>
+
+  <div id="status">⏳ Loading MobileNet model, please wait...</div>
+
+  <div class="controls">
+    <label for="imgUpload">📁 Upload up to 5 Images</label>
+    <input type="file" id="imgUpload" accept="image/*" multiple />
+    <button id="classifyAllBtn" disabled>🚀 Classify All</button>
+    <button id="clearBtn">🗑 Clear</button>
+  </div>
+
+  <div class="grid" id="imageGrid"></div>
+  <div id="summarySection">
+    <h2>📋 Accuracy Summary Table</h2>
+    <table id="summaryTable">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Top-1 Prediction</th>
+          <th>Confidence</th>
+          <th>Top-2</th>
+          <th>Top-3</th>
+        </tr>
+      </thead>
+      <tbody id="summaryBody"></tbody>
+    </table>
+    <p class="note">* Confidence shown for Top-1. Higher confidence = model is more certain.</p>
+  </div>
+
+  <script>
+    let model = null;
+    let uploadedImages = [];
+    const statusEl = document.getElementById('status');
+    const classifyAllBtn = document.getElementById('classifyAllBtn');
+    const grid = document.getElementById('imageGrid');
+    const summarySection = document.getElementById('summarySection');
+    const summaryBody = document.getElementById('summaryBody');
+
+    async function loadModel() {
+      model = await mobilenet.load();
+      statusEl.textContent = '✅ Model loaded! Upload up to 5 images and click Classify All.';
+      statusEl.style.background = '#d4edda';
+      statusEl.style.borderColor = '#28a745';
+      statusEl.style.color = '#155724';
+      if (uploadedImages.length > 0) classifyAllBtn.disabled = false;
+    }
+
+    document.getElementById('imgUpload').addEventListener('change', function(e) {
+      const files = Array.from(e.target.files).slice(0, 5);
+      uploadedImages = [];
+      grid.innerHTML = '';
+      summarySection.style.display = 'none';
+
+      files.forEach((file, idx) => {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          uploadedImages.push({ src: ev.target.result, index: idx });
+          renderCard(ev.target.result, idx);
+          if (model) classifyAllBtn.disabled = false;
+        };
+        reader.readAsDataURL(file);
+      });
+    });
+
+    function renderCard(src, idx) {
+      const card = document.createElement('div');
+      card.className = 'img-card';
+      card.id = `card-${idx}`;
+      card.innerHTML = `
+        <div class="badge-num">Image ${idx + 1}</div>
+        <img id="img-${idx}" src="${src}" crossorigin="anonymous" />
+        <div class="card-body">
+          <div class="img-num">Awaiting classification...</div>
+        </div>
+      `;
+      grid.appendChild(card);
+    }
+
+    classifyAllBtn.addEventListener('click', async () => {
+      if (!model || uploadedImages.length === 0) return;
+      classifyAllBtn.disabled = true;
+      summarySection.style.display = 'none';
+      summaryBody.innerHTML = '';
+      statusEl.textContent = '🔍 Classifying all images...';
+
+      const allResults = [];
+
+      for (let i = 0; i < uploadedImages.length; i++) {
+        const imgEl = document.getElementById(`img-${i}`);
+        const card = document.getElementById(`card-${i}`);
+        card.querySelector('.card-body').innerHTML = `<div class="spinner">⏳ Classifying...</div>`;
+
+        const preds = await model.classify(imgEl, 3);
+        allResults.push(preds);
+
+        const body = card.querySelector('.card-body');
+        body.innerHTML = `<div class="img-num">Image ${i + 1} — Top 3:</div>` +
+          preds.map((p, pi) => `
+            <div class="pred-item ${pi === 0 ? 'top1' : ''}">
+              <span>${pi + 1}. ${p.className.split(',')[0]}</span>
+              <span class="conf">${(p.probability * 100).toFixed(1)}%</span>
+            </div>
+          `).join('');
+      }
+
+      // Build summary table
+      allResults.forEach((preds, i) => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td>${i + 1}</td>
+          <td>${preds[0].className.split(',')[0]}</td>
+          <td>${(preds[0].probability * 100).toFixed(1)}%</td>
+          <td>${preds[1] ? preds[1].className.split(',')[0] : '-'}</td>
+          <td>${preds[2] ? preds[2].className.split(',')[0] : '-'}</td>
+        `;
+        summaryBody.appendChild(row);
+      });
+
+      const avgConf = allResults.reduce((s, p) => s + p[0].probability, 0) / allResults.length;
+      const avgRow = document.createElement('tr');
+      avgRow.className = 'avg-row';
+      avgRow.innerHTML = `<td colspan="2">Avg Top-1 Confidence</td><td>${(avgConf * 100).toFixed(1)}%</td><td colspan="2"></td>`;
+      summaryBody.appendChild(avgRow);
+
+      summarySection.style.display = 'block';
+      statusEl.textContent = `✅ Done! ${uploadedImages.length} image(s) classified.`;
+      classifyAllBtn.disabled = false;
+    });
+
+    document.getElementById('clearBtn').addEventListener('click', () => {
+      uploadedImages = [];
+      grid.innerHTML = '';
+      summarySection.style.display = 'none';
+      classifyAllBtn.disabled = true;
+      document.getElementById('imgUpload').value = '';
+    });
+
+    loadModel();
+  </script>
+</body>
+</html>
