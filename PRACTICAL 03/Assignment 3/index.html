@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Assignment 3 – RNN vs Dense Network</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Bebas+Neue&family=DM+Sans:wght@400;600;800&display=swap" rel="stylesheet"/>
+  <style>
+    :root {
+      --bg: #111318;
+      --s1: #1a1d24;
+      --s2: #21242d;
+      --border: #2e3240;
+      --rnn: #60a5fa;
+      --dense: #f59e0b;
+      --text: #e2e8f0;
+      --muted: #64748b;
+      --green: #4ade80;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 36px 20px 60px;
+    }
+    .header { text-align: center; margin-bottom: 40px; }
+    .a3-tag {
+      display: inline-block;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.68rem;
+      padding: 3px 14px;
+      border-radius: 4px;
+      letter-spacing: 2px;
+      margin-bottom: 12px;
+    }
+    h1 {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 3rem;
+      letter-spacing: 4px;
+      line-height: 1;
+    }
+    h1 .rnn { color: var(--rnn); }
+    h1 .dense { color: var(--dense); }
+    .subtitle { color: var(--muted); font-size: 0.82rem; margin-top: 8px; font-family: 'IBM Plex Mono', monospace; }
+
+    /* Architecture cards */
+    .arch-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+      max-width: 900px;
+      margin: 0 auto 24px;
+    }
+    @media(max-width:640px){ .arch-grid { grid-template-columns: 1fr; } }
+
+    .arch-card {
+      background: var(--s1);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+    }
+    .arch-card .model-name {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 1.3rem;
+      letter-spacing: 2px;
+      margin-bottom: 10px;
+    }
+    .arch-card.rnn .model-name { color: var(--rnn); }
+    .arch-card.dense .model-name { color: var(--dense); }
+
+    .layer-list { list-style: none; }
+    .layer-list li {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 7px 10px;
+      border-radius: 6px;
+      margin-bottom: 5px;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.75rem;
+      background: var(--s2);
+      color: #aaa;
+    }
+    .layer-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .rnn .layer-dot { background: var(--rnn); }
+    .dense .layer-dot { background: var(--dense); }
+    .arch-meta { font-size: 0.72rem; color: var(--muted); font-family: 'IBM Plex Mono', monospace; margin-top: 10px; line-height: 1.7; }
+
+    /* Train button */
+    .train-row {
+      max-width: 900px;
+      margin: 0 auto 24px;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .train-all-btn {
+      background: linear-gradient(135deg, var(--rnn), var(--dense));
+      color: #111;
+      border: none;
+      padding: 13px 32px;
+      border-radius: 8px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.95rem;
+      font-weight: 800;
+      cursor: pointer;
+      letter-spacing: 0.5px;
+      transition: opacity 0.2s;
+    }
+    .train-all-btn:hover { opacity: 0.88; }
+    .train-all-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+    #globalStatus { font-family: 'IBM Plex Mono', monospace; font-size: 0.78rem; color: var(--muted); }
+
+    /* Live training panels */
+    .live-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+      max-width: 900px;
+      margin: 0 auto 24px;
+    }
+    @media(max-width:640px){ .live-grid { grid-template-columns: 1fr; } }
+    .live-card {
+      background: var(--s1);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .live-header {
+      padding: 10px 16px;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.72rem;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .live-header.rnn { background: rgba(96,165,250,0.12); color: var(--rnn); }
+    .live-header.dense { background: rgba(245,158,11,0.12); color: var(--dense); }
+    .live-log {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.72rem;
+      color: #888;
+      padding: 12px;
+      height: 140px;
+      overflow-y: auto;
+      line-height: 1.8;
+      background: #0d0f14;
+    }
+    canvas.mini-chart {
+      display: block;
+      width: 100%;
+      height: 80px;
+      background: #0d0f14;
+      border-top: 1px solid var(--border);
+    }
+
+    /* Comparison table */
+    #comparisonSection {
+      max-width: 900px;
+      margin: 0 auto 28px;
+      background: var(--s1);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      display: none;
+    }
+    .comp-header {
+      padding: 14px 20px;
+      background: var(--s2);
+      font-size: 0.72rem;
+      font-family: 'IBM Plex Mono', monospace;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    table { width: 100%; border-collapse: collapse; }
+    th, td {
+      padding: 12px 20px;
+      text-align: left;
+      font-size: 0.82rem;
+      border-bottom: 1px solid var(--border);
+    }
+    th { font-size: 0.7rem; font-family: 'IBM Plex Mono', monospace; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; }
+    .td-rnn { color: var(--rnn); font-family: 'IBM Plex Mono', monospace; font-weight: 600; }
+    .td-dense { color: var(--dense); font-family: 'IBM Plex Mono', monospace; font-weight: 600; }
+    .winner { background: rgba(74,222,128,0.08); }
+    .winner td { color: var(--green); }
+    tr:last-child td { border-bottom: none; }
+
+    /* Head-to-head test */
+    #h2hSection {
+      max-width: 900px;
+      margin: 0 auto;
+      background: var(--s1);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 22px;
+      display: none;
+    }
+    #h2hSection .sec-title {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.7rem;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 16px;
+    }
+    .h2h-input-row { display: flex; gap: 10px; margin-bottom: 16px; }
+    .h2h-input-row input {
+      flex: 1;
+      background: #0d0f14;
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.83rem;
+      outline: none;
+    }
+    .h2h-input-row input:focus { border-color: var(--rnn); }
+    .h2h-btn {
+      background: var(--s2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 10px 22px;
+      border-radius: 8px;
+      font-family: 'DM Sans', sans-serif;
+      font-weight: 600;
+      font-size: 0.83rem;
+      cursor: pointer;
+      transition: border-color 0.2s;
+    }
+    .h2h-btn:hover { border-color: var(--rnn); }
+
+    .h2h-result {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+    @media(max-width:500px){ .h2h-result { grid-template-columns: 1fr; } }
+    .h2h-box {
+      background: #0d0f14;
+      border-radius: 10px;
+      padding: 16px;
+      border: 1px solid var(--border);
+    }
+    .h2h-model-name {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 1rem;
+      letter-spacing: 2px;
+      margin-bottom: 10px;
+    }
+    .h2h-model-name.rnn { color: var(--rnn); }
+    .h2h-model-name.dense { color: var(--dense); }
+    .h2h-sentiment {
+      font-size: 0.82rem;
+      font-weight: 700;
+      margin-bottom: 6px;
+      font-family: 'IBM Plex Mono', monospace;
+    }
+    .h2h-bar-track { height: 6px; background: var(--border); border-radius: 4px; overflow: hidden; margin-bottom: 6px; }
+    .h2h-bar-fill { height: 100%; border-radius: 4px; transition: width 0.5s ease; }
+    .rnn-fill { background: var(--rnn); }
+    .dense-fill { background: var(--dense); }
+    .h2h-score { font-size: 0.7rem; color: var(--muted); font-family: 'IBM Plex Mono', monospace; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div class="a3-tag">ASSIGNMENT 3 — MODEL COMPARISON</div>
+  <h1><span class="rnn">RNN</span> <span style="color:var(--border)">VS</span> <span class="dense">DENSE</span></h1>
+  <p class="subtitle">Compare performance of two architectures for sentiment analysis</p>
+</div>
+
+<!-- Architecture Cards -->
+<div class="arch-grid">
+  <div class="arch-card rnn">
+    <div class="model-name">🔁 RNN Model</div>
+    <ul class="layer-list">
+      <li><div class="layer-dot"></div>Embedding(vocab=200, dim=16)</li>
+      <li><div class="layer-dot"></div>SimpleRNN(units=32, tanh)</li>
+      <li><div class="layer-dot"></div>Dense(1, sigmoid)</li>
+    </ul>
+    <div class="arch-meta">
+      Captures sequential patterns in text<br/>
+      Remembers word order & context<br/>
+      More complex — better for long text
+    </div>
+  </div>
+  <div class="arch-card dense">
+    <div class="model-name">⚡ Dense Model</div>
+    <ul class="layer-list">
+      <li><div class="layer-dot"></div>Embedding(vocab=200, dim=16)</li>
+      <li><div class="layer-dot"></div>Flatten()</li>
+      <li><div class="layer-dot"></div>Dense(32, relu)</li>
+      <li><div class="layer-dot"></div>Dense(1, sigmoid)</li>
+    </ul>
+    <div class="arch-meta">
+      Treats all words independently<br/>
+      No memory of sequence order<br/>
+      Simpler — faster but less context
+    </div>
+  </div>
+</div>
+
+<!-- Train -->
+<div class="train-row">
+  <button class="train-all-btn" id="trainAllBtn">▶ Train Both Models (40 Epochs)</button>
+  <span id="globalStatus">Ready to train</span>
+</div>
+
+<!-- Live panels -->
+<div class="live-grid">
+  <div class="live-card">
+    <div class="live-header rnn"><span>RNN Training</span><span id="rnnStatus">—</span></div>
+    <div class="live-log" id="rnnLog">Waiting...</div>
+    <canvas class="mini-chart" id="rnnChart"></canvas>
+  </div>
+  <div class="live-card">
+    <div class="live-header dense"><span>Dense Training</span><span id="denseStatus">—</span></div>
+    <div class="live-log" id="denseLog">Waiting...</div>
+    <canvas class="mini-chart" id="denseChart"></canvas>
+  </div>
+</div>
+
+<!-- Comparison Table -->
+<div id="comparisonSection">
+  <div class="comp-header">📊 Performance Comparison Summary</div>
+  <table>
+    <thead>
+      <tr>
+        <th>Metric</th>
+        <th style="color:var(--rnn)">RNN Model</th>
+        <th style="color:var(--dense)">Dense Model</th>
+        <th>Winner</th>
+      </tr>
+    </thead>
+    <tbody id="compBody"></tbody>
+  </table>
+</div>
+
+<!-- Head-to-Head Test -->
+<div id="h2hSection">
+  <div class="sec-title">🆚 Head-to-Head Live Test</div>
+  <div class="h2h-input-row">
+    <input type="text" id="h2hInput" placeholder="Enter a sentence to test both models..." />
+    <button class="h2h-btn" id="h2hBtn">Compare</button>
+  </div>
+  <div class="h2h-result" id="h2hResult"></div>
+</div>
+
+<script>
+// ── Data ──────────────────────────────────────────────────
+const dataset = [
+  { text: "I love this product it is amazing", label: 1 },
+  { text: "This is absolutely wonderful and great", label: 1 },
+  { text: "Fantastic experience highly recommend", label: 1 },
+  { text: "I am so happy with this purchase", label: 1 },
+  { text: "Excellent quality very satisfied", label: 1 },
+  { text: "Best thing I have ever bought", label: 1 },
+  { text: "Really impressed with the results", label: 1 },
+  { text: "Superb performance exceeds expectations", label: 1 },
+  { text: "Truly outstanding service and quality", label: 1 },
+  { text: "Wonderful experience would buy again", label: 1 },
+  { text: "This is terrible I hate it", label: 0 },
+  { text: "Awful product complete waste of money", label: 0 },
+  { text: "Very disappointed with this purchase", label: 0 },
+  { text: "Horrible experience never again", label: 0 },
+  { text: "Poor quality broke after one day", label: 0 },
+  { text: "Worst product I have ever used", label: 0 },
+  { text: "Completely useless total disappointment", label: 0 },
+  { text: "Bad quality not worth the price", label: 0 },
+  { text: "Terrible service very unhappy", label: 0 },
+  { text: "Dreadful product absolutely awful", label: 0 },
+];
+
+const VOCAB_SIZE = 200, MAX_LEN = 10;
+let wordIndex = {};
+function buildVocab() {
+  let idx = 1;
+  dataset.forEach(d => d.text.toLowerCase().split(' ').forEach(w => { if (!wordIndex[w]) wordIndex[w] = idx++; }));
+}
+function textToSeq(text) {
+  const words = text.toLowerCase().replace(/[^a-z ]/g, '').split(' ');
+  const padded = new Array(MAX_LEN).fill(0);
+  words.slice(0, MAX_LEN).forEach((w, i) => padded[i] = wordIndex[w] || 0);
+  return padded;
+}
+
+// ── Models ────────────────────────────────────────────────
+function buildRNN() {
+  const m = tf.sequential();
+  m.add(tf.layers.embedding({ inputDim: VOCAB_SIZE, outputDim: 16, inputLength: MAX_LEN }));
+  m.add(tf.layers.simpleRNN({ units: 32, activation: 'tanh' }));
+  m.add(tf.layers.dense({ units: 1, activation: 'sigmoid' }));
+  m.compile({ optimizer: tf.train.adam(0.01), loss: 'binaryCrossentropy', metrics: ['accuracy'] });
+  return m;
+}
+
+function buildDense() {
+  const m = tf.sequential();
+  m.add(tf.layers.embedding({ inputDim: VOCAB_SIZE, outputDim: 16, inputLength: MAX_LEN }));
+  m.add(tf.layers.flatten());
+  m.add(tf.layers.dense({ units: 32, activation: 'relu' }));
+  m.add(tf.layers.dense({ units: 1, activation: 'sigmoid' }));
+  m.compile({ optimizer: tf.train.adam(0.01), loss: 'binaryCrossentropy', metrics: ['accuracy'] });
+  return m;
+}
+
+let rnnModel = null, denseModel = null;
+const results = {};
+
+// ── Chart helpers ─────────────────────────────────────────
+function drawMiniChart(canvasId, history, color) {
+  const canvas = document.getElementById(canvasId);
+  const W = canvas.offsetWidth; const H = canvas.offsetHeight;
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+  if (history.length < 2) return;
+  const max = Math.max(...history);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 4;
+  ctx.beginPath();
+  history.forEach((v, i) => {
+    const x = (i / (history.length - 1)) * (W - 20) + 10;
+    const y = H - 8 - ((v / max) * (H - 16));
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+}
+
+// ── Train ─────────────────────────────────────────────────
+async function trainModel(model, logId, statusId, chartId, color, name) {
+  const log = document.getElementById(logId);
+  const statusEl = document.getElementById(statusId);
+  const lossH = [], accH = [];
+  const xs = tf.tensor2d(dataset.map(d => textToSeq(d.text)));
+  const ys = tf.tensor1d(dataset.map(d => d.label), 'float32');
+  const t0 = performance.now();
+
+  for (let ep = 0; ep < 40; ep++) {
+    const h = await model.fit(xs, ys, { epochs: 1, shuffle: true });
+    lossH.push(h.history.loss[0]);
+    accH.push(h.history.acc ? h.history.acc[0] : h.history.accuracy[0]);
+    drawMiniChart(chartId, lossH, color);
+    statusEl.textContent = `EP ${ep+1}/40`;
+    if ((ep+1) % 5 === 0) {
+      log.innerHTML += `ep ${ep+1} | loss: ${lossH.at(-1).toFixed(4)} | acc: ${accH.at(-1).toFixed(4)}\n`;
+      log.scrollTop = log.scrollHeight;
+    }
+    await tf.nextFrame();
+  }
+  const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
+  xs.dispose(); ys.dispose();
+
+  const finalAcc = accH.at(-1);
+  const finalLoss = lossH.at(-1);
+  log.innerHTML += `\n✅ Done! Time: ${elapsed}s\n`;
+  statusEl.textContent = `✅ ${(finalAcc*100).toFixed(1)}% acc`;
+  return { finalLoss, finalAcc, elapsed: parseFloat(elapsed), lossH, accH };
+}
+
+document.getElementById('trainAllBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('trainAllBtn');
+  btn.disabled = true;
+  document.getElementById('globalStatus').textContent = 'Training...';
+  buildVocab();
+
+  document.getElementById('rnnLog').innerHTML = '';
+  document.getElementById('denseLog').innerHTML = '';
+
+  rnnModel = buildRNN();
+  denseModel = buildDense();
+
+  const [rnnR, denseR] = await Promise.all([
+    trainModel(rnnModel, 'rnnLog', 'rnnStatus', 'rnnChart', '#60a5fa', 'RNN'),
+    trainModel(denseModel, 'denseLog', 'denseStatus', 'denseChart', '#f59e0b', 'Dense')
+  ]);
+
+  results.rnn = rnnR;
+  results.dense = denseR;
+
+  // Build comparison table
+  const rows = [
+    { metric: 'Final Loss', rnn: rnnR.finalLoss.toFixed(4), dense: denseR.finalLoss.toFixed(4), lowerBetter: true },
+    { metric: 'Final Accuracy', rnn: (rnnR.finalAcc*100).toFixed(1)+'%', dense: (denseR.finalAcc*100).toFixed(1)+'%', lowerBetter: false },
+    { metric: 'Training Time', rnn: rnnR.elapsed+'s', dense: denseR.elapsed+'s', lowerBetter: true },
+    { metric: 'Architecture', rnn: 'Embedding → RNN → Dense', dense: 'Embedding → Flatten → Dense × 2', lowerBetter: null },
+    { metric: 'Params', rnn: 'Fewer (seq aware)', dense: 'More (flat expand)', lowerBetter: null },
+    { metric: 'Sequence Aware?', rnn: '✅ Yes', dense: '❌ No', lowerBetter: null },
+    { metric: 'Best For', rnn: 'Long text, context-heavy', dense: 'Short text, speed', lowerBetter: null },
+  ];
+
+  const body = document.getElementById('compBody');
+  body.innerHTML = '';
+  rows.forEach(row => {
+    let winner = '—';
+    let isWinner = false;
+    if (row.lowerBetter === true) {
+      const rv = parseFloat(rnnR.finalLoss); const dv = parseFloat(denseR.finalLoss);
+      winner = row.metric === 'Training Time'
+        ? (rnnR.elapsed < denseR.elapsed ? '🔵 RNN' : '🟡 Dense')
+        : (rv < dv ? '🔵 RNN' : '🟡 Dense');
+    } else if (row.lowerBetter === false) {
+      winner = rnnR.finalAcc >= denseR.finalAcc ? '🔵 RNN' : '🟡 Dense';
+    }
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><strong>${row.metric}</strong></td>
+      <td class="td-rnn">${row.rnn}</td>
+      <td class="td-dense">${row.dense}</td>
+      <td style="color:var(--green);font-weight:600;font-size:0.8rem">${winner}</td>
+    `;
+    body.appendChild(tr);
+  });
+
+  document.getElementById('comparisonSection').style.display = 'block';
+  document.getElementById('h2hSection').style.display = 'block';
+  document.getElementById('globalStatus').textContent = '✅ Both models trained!';
+  btn.disabled = false;
+});
+
+// ── Head to Head ──────────────────────────────────────────
+document.getElementById('h2hBtn').addEventListener('click', () => {
+  const text = document.getElementById('h2hInput').value.trim();
+  if (!text || !rnnModel || !denseModel) return;
+  const seq = textToSeq(text);
+  const input = tf.tensor2d([seq]);
+
+  const rnnScore = rnnModel.predict(input).dataSync()[0];
+  const denseScore = denseModel.predict(input).dataSync()[0];
+  input.dispose();
+
+  function fmt(score) {
+    const isPos = score >= 0.5;
+    const conf = isPos ? score : 1 - score;
+    return { isPos, conf, label: isPos ? '😊 POSITIVE' : '😞 NEGATIVE', pct: (conf*100).toFixed(1) };
+  }
+  const r = fmt(rnnScore), d = fmt(denseScore);
+  const agree = r.isPos === d.isPos;
+
+  document.getElementById('h2hResult').innerHTML = `
+    <div class="h2h-box">
+      <div class="h2h-model-name rnn">🔁 RNN</div>
+      <div class="h2h-sentiment" style="color:${r.isPos?'var(--rnn)':'#f87171'}">${r.label}</div>
+      <div class="h2h-bar-track"><div class="h2h-bar-fill rnn-fill" style="width:${r.pct}%"></div></div>
+      <div class="h2h-score">Confidence: ${r.pct}% | Raw: ${rnnScore.toFixed(4)}</div>
+    </div>
+    <div class="h2h-box">
+      <div class="h2h-model-name dense">⚡ Dense</div>
+      <div class="h2h-sentiment" style="color:${d.isPos?'var(--dense)':'#f87171'}">${d.label}</div>
+      <div class="h2h-bar-track"><div class="h2h-bar-fill dense-fill" style="width:${d.pct}%"></div></div>
+      <div class="h2h-score">Confidence: ${d.pct}% | Raw: ${denseScore.toFixed(4)}</div>
+    </div>
+    <div style="grid-column:1/-1;font-family:'IBM Plex Mono',monospace;font-size:0.75rem;color:${agree?'var(--green)':'#f87171'};margin-top:4px;">
+      ${agree ? '✅ Both models agree on sentiment' : '⚠️ Models disagree — sentence may be ambiguous'}
+    </div>
+  `;
+});
+
+document.getElementById('h2hInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('h2hBtn').click();
+});
+</script>
+</body>
+</html>
