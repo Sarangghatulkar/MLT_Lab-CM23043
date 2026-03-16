@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Assignment 1 – Train Sentiment Classifier</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet"/>
+  <style>
+    :root {
+      --bg: #0e0e12;
+      --surface: #16161c;
+      --border: #2a2a35;
+      --accent: #7cffd4;
+      --neg: #ff6b6b;
+      --pos: #7cffd4;
+      --text: #e8e8f0;
+      --muted: #666680;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Syne', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 36px 20px 60px;
+    }
+    .header {
+      text-align: center;
+      margin-bottom: 36px;
+    }
+    .tag {
+      display: inline-block;
+      background: #1e1e2a;
+      color: var(--accent);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.7rem;
+      padding: 4px 14px;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      margin-bottom: 12px;
+      letter-spacing: 1px;
+    }
+    h1 { font-size: 2rem; font-weight: 800; letter-spacing: -0.5px; }
+    h1 span { color: var(--accent); }
+    .subtitle { color: var(--muted); font-size: 0.9rem; margin-top: 6px; font-family: 'JetBrains Mono', monospace; }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      max-width: 1000px;
+      margin: 0 auto 24px;
+    }
+    @media(max-width:700px){ .layout { grid-template-columns: 1fr; } }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 22px;
+    }
+    .card-title {
+      font-size: 0.72rem;
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--muted);
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      margin-bottom: 14px;
+    }
+
+    /* Dataset display */
+    .sentence-list { max-height: 280px; overflow-y: auto; }
+    .sentence-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 7px 10px;
+      border-radius: 8px;
+      margin-bottom: 6px;
+      font-size: 0.83rem;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .sentence-item.pos { background: rgba(124,255,212,0.07); border-left: 3px solid var(--pos); }
+    .sentence-item.neg { background: rgba(255,107,107,0.07); border-left: 3px solid var(--neg); }
+    .badge {
+      font-size: 0.65rem;
+      padding: 2px 8px;
+      border-radius: 20px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .badge.pos { background: rgba(124,255,212,0.15); color: var(--pos); }
+    .badge.neg { background: rgba(255,107,107,0.15); color: var(--neg); }
+
+    /* Config */
+    .config-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .config-item label {
+      display: block;
+      font-size: 0.7rem;
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--muted);
+      margin-bottom: 5px;
+    }
+    .config-item input[type="range"] { width: 100%; accent-color: var(--accent); }
+    .config-item .val {
+      font-size: 0.75rem;
+      color: var(--accent);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* Train button */
+    .train-btn {
+      width: 100%;
+      max-width: 1000px;
+      margin: 0 auto 24px;
+      display: block;
+      background: var(--accent);
+      color: #0e0e12;
+      border: none;
+      padding: 14px;
+      border-radius: 10px;
+      font-family: 'Syne', sans-serif;
+      font-size: 1rem;
+      font-weight: 800;
+      cursor: pointer;
+      letter-spacing: 1px;
+      transition: opacity 0.2s, transform 0.1s;
+    }
+    .train-btn:hover { opacity: 0.88; transform: translateY(-1px); }
+    .train-btn:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
+
+    /* Log + chart */
+    .bottom-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      max-width: 1000px;
+      margin: 0 auto 24px;
+    }
+    @media(max-width:700px){ .bottom-grid { grid-template-columns: 1fr; } }
+
+    #logBox {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+      color: #aaa;
+      background: #0a0a0f;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px;
+      height: 220px;
+      overflow-y: auto;
+      line-height: 1.8;
+    }
+    #logBox .ep { color: var(--accent); }
+    #logBox .loss-val { color: #ffd97d; }
+    #logBox .done { color: var(--pos); font-weight: 700; }
+
+    canvas#lossChart {
+      background: #0a0a0f;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      width: 100%;
+      height: 220px;
+      display: block;
+    }
+
+    /* Test section */
+    .test-section {
+      max-width: 1000px;
+      margin: 0 auto;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 22px;
+    }
+    .test-row {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .test-row input {
+      flex: 1;
+      background: #0a0a0f;
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      outline: none;
+    }
+    .test-row input:focus { border-color: var(--accent); }
+    .test-row button {
+      background: #1e1e2a;
+      border: 1px solid var(--accent);
+      color: var(--accent);
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-family: 'Syne', sans-serif;
+      font-weight: 700;
+      cursor: pointer;
+      font-size: 0.85rem;
+      transition: background 0.2s;
+    }
+    .test-row button:hover { background: #0e2a22; }
+    .test-row button:disabled { opacity: 0.35; cursor: not-allowed; }
+
+    .result-box {
+      padding: 14px 16px;
+      border-radius: 10px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      display: none;
+    }
+    .result-box.pos { background: rgba(124,255,212,0.08); border: 1px solid var(--pos); color: var(--pos); }
+    .result-box.neg { background: rgba(255,107,107,0.08); border: 1px solid var(--neg); color: var(--neg); }
+
+    .conf-bar-track {
+      height: 6px;
+      background: var(--border);
+      border-radius: 4px;
+      margin-top: 10px;
+      overflow: hidden;
+    }
+    .conf-bar-fill {
+      height: 100%;
+      border-radius: 4px;
+      transition: width 0.5s ease;
+    }
+    .pos .conf-bar-fill { background: var(--pos); }
+    .neg .conf-bar-fill { background: var(--neg); }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div class="tag">CO3 — ASSIGNMENT 1</div>
+  <h1>Sentiment <span>Classifier</span></h1>
+  <p class="subtitle">Train an RNN on positive / negative sentences</p>
+</div>
+
+<!-- Dataset + Config -->
+<div class="layout">
+  <div class="card">
+    <div class="card-title">📚 Training Dataset (20 sentences)</div>
+    <div class="sentence-list" id="datasetList"></div>
+  </div>
+  <div class="card">
+    <div class="card-title">⚙️ Training Config</div>
+    <div class="config-grid">
+      <div class="config-item">
+        <label>Epochs: <span class="val" id="epochVal">30</span></label>
+        <input type="range" id="epochRange" min="10" max="100" value="30" step="5"
+          oninput="document.getElementById('epochVal').textContent=this.value"/>
+      </div>
+      <div class="config-item">
+        <label>Learning Rate: <span class="val" id="lrVal">0.01</span></label>
+        <input type="range" id="lrRange" min="1" max="5" value="2" step="1"
+          oninput="document.getElementById('lrVal').textContent=['0.001','0.005','0.01','0.05','0.1'][this.value-1]"/>
+      </div>
+      <div class="config-item">
+        <label>Embedding Dim: <span class="val" id="embVal">16</span></label>
+        <input type="range" id="embRange" min="8" max="64" value="16" step="8"
+          oninput="document.getElementById('embVal').textContent=this.value"/>
+      </div>
+      <div class="config-item">
+        <label>RNN Units: <span class="val" id="rnnVal">16</span></label>
+        <input type="range" id="rnnRange" min="8" max="64" value="16" step="8"
+          oninput="document.getElementById('rnnVal').textContent=this.value"/>
+      </div>
+    </div>
+    <div style="margin-top:16px; font-family:'JetBrains Mono',monospace; font-size:0.72rem; color:var(--muted); line-height:1.8;">
+      Architecture:<br/>
+      Embedding → SimpleRNN → Dense(1, sigmoid)<br/>
+      Loss: Binary Crossentropy<br/>
+      Optimizer: Adam
+    </div>
+  </div>
+</div>
+
+<button class="train-btn" id="trainBtn">▶ Train Model</button>
+
+<!-- Log + Chart -->
+<div class="bottom-grid">
+  <div>
+    <div class="card-title" style="color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:0.7rem;letter-spacing:2px;text-transform:uppercase;margin-bottom:10px;">📋 Training Log</div>
+    <div id="logBox">Waiting to train...</div>
+  </div>
+  <div>
+    <div class="card-title" style="color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:0.7rem;letter-spacing:2px;text-transform:uppercase;margin-bottom:10px;">📈 Loss Curve</div>
+    <canvas id="lossChart"></canvas>
+  </div>
+</div>
+
+<!-- Test -->
+<div class="test-section">
+  <div class="card-title">🧪 Test Your Sentence (after training)</div>
+  <div class="test-row">
+    <input type="text" id="testInput" placeholder="Type a sentence to classify..." />
+    <button id="predictBtn" disabled>Predict</button>
+  </div>
+  <div class="result-box" id="resultBox">
+    <span id="resultEmoji"></span> <strong id="resultLabel"></strong> &nbsp;|&nbsp; Confidence: <span id="resultConf"></span>
+    <div class="conf-bar-track"><div class="conf-bar-fill" id="confFill" style="width:0%"></div></div>
+  </div>
+</div>
+
+<script>
+// ── Dataset ──────────────────────────────────────────────
+const dataset = [
+  { text: "I love this product it is amazing", label: 1 },
+  { text: "This is absolutely wonderful and great", label: 1 },
+  { text: "Fantastic experience highly recommend", label: 1 },
+  { text: "I am so happy with this purchase", label: 1 },
+  { text: "Excellent quality very satisfied", label: 1 },
+  { text: "Best thing I have ever bought", label: 1 },
+  { text: "Really impressed with the results", label: 1 },
+  { text: "Superb performance exceeds expectations", label: 1 },
+  { text: "Truly outstanding service and quality", label: 1 },
+  { text: "Wonderful experience would buy again", label: 1 },
+  { text: "This is terrible I hate it", label: 0 },
+  { text: "Awful product complete waste of money", label: 0 },
+  { text: "Very disappointed with this purchase", label: 0 },
+  { text: "Horrible experience never again", label: 0 },
+  { text: "Poor quality broke after one day", label: 0 },
+  { text: "Worst product I have ever used", label: 0 },
+  { text: "Completely useless total disappointment", label: 0 },
+  { text: "Bad quality not worth the price", label: 0 },
+  { text: "Terrible service very unhappy", label: 0 },
+  { text: "Dreadful product absolutely awful", label: 0 },
+];
+
+// Render dataset
+const list = document.getElementById('datasetList');
+dataset.forEach(d => {
+  const div = document.createElement('div');
+  div.className = `sentence-item ${d.label === 1 ? 'pos' : 'neg'}`;
+  div.innerHTML = `<span class="badge ${d.label===1?'pos':'neg'}">${d.label===1?'POS':'NEG'}</span><span>${d.text}</span>`;
+  list.appendChild(div);
+});
+
+// ── Tokenizer ─────────────────────────────────────────────
+const VOCAB_SIZE = 200;
+const MAX_LEN = 10;
+let wordIndex = {};
+
+function buildVocab() {
+  let idx = 1;
+  dataset.forEach(d => {
+    d.text.toLowerCase().split(' ').forEach(w => {
+      if (!wordIndex[w]) wordIndex[w] = idx++;
+    });
+  });
+}
+
+function textToSeq(text) {
+  const words = text.toLowerCase().replace(/[^a-z ]/g, '').split(' ');
+  const seq = words.map(w => wordIndex[w] || 0);
+  const padded = new Array(MAX_LEN).fill(0);
+  for (let i = 0; i < Math.min(seq.length, MAX_LEN); i++) padded[i] = seq[i];
+  return padded;
+}
+
+// ── Model ─────────────────────────────────────────────────
+let model = null;
+
+function buildModel(embDim, rnnUnits, lr) {
+  const m = tf.sequential();
+  m.add(tf.layers.embedding({ inputDim: VOCAB_SIZE, outputDim: embDim, inputLength: MAX_LEN }));
+  m.add(tf.layers.simpleRNN({ units: rnnUnits, activation: 'tanh' }));
+  m.add(tf.layers.dense({ units: 1, activation: 'sigmoid' }));
+  m.compile({ optimizer: tf.train.adam(lr), loss: 'binaryCrossentropy', metrics: ['accuracy'] });
+  return m;
+}
+
+// ── Training ──────────────────────────────────────────────
+const lrValues = [0.001, 0.005, 0.01, 0.05, 0.1];
+const logBox = document.getElementById('logBox');
+const canvas = document.getElementById('lossChart');
+const ctx = canvas.getContext('2d');
+const lossHistory = [];
+
+function drawChart() {
+  const W = canvas.offsetWidth; const H = canvas.offsetHeight;
+  canvas.width = W; canvas.height = H;
+  ctx.clearRect(0, 0, W, H);
+  if (lossHistory.length < 2) return;
+  const maxLoss = Math.max(...lossHistory);
+  ctx.strokeStyle = '#7cffd4';
+  ctx.lineWidth = 2;
+  ctx.shadowColor = '#7cffd4';
+  ctx.shadowBlur = 6;
+  ctx.beginPath();
+  lossHistory.forEach((v, i) => {
+    const x = (i / (lossHistory.length - 1)) * (W - 40) + 20;
+    const y = H - 20 - ((v / maxLoss) * (H - 40));
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+  // axes labels
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = '#666680';
+  ctx.font = '10px JetBrains Mono';
+  ctx.fillText('Loss', 4, 14);
+  ctx.fillText('Epoch', W - 36, H - 4);
+}
+
+document.getElementById('trainBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('trainBtn');
+  btn.disabled = true;
+  document.getElementById('predictBtn').disabled = true;
+  logBox.innerHTML = '';
+  lossHistory.length = 0;
+
+  buildVocab();
+  const epochs = parseInt(document.getElementById('epochRange').value);
+  const lr = lrValues[parseInt(document.getElementById('lrRange').value) - 1];
+  const embDim = parseInt(document.getElementById('embRange').value);
+  const rnnUnits = parseInt(document.getElementById('rnnRange').value);
+
+  const xs = tf.tensor2d(dataset.map(d => textToSeq(d.text)));
+  const ys = tf.tensor1d(dataset.map(d => d.label), 'float32');
+
+  model = buildModel(embDim, rnnUnits, lr);
+
+  logBox.innerHTML = `<span class="ep">Starting training...</span>\n`;
+
+  await model.fit(xs, ys, {
+    epochs,
+    shuffle: true,
+    callbacks: {
+      onEpochEnd: async (epoch, logs) => {
+        lossHistory.push(logs.loss);
+        drawChart();
+        if ((epoch + 1) % 5 === 0 || epoch === 0) {
+          logBox.innerHTML += `Epoch <span class="ep">${epoch + 1}/${epochs}</span> — loss: <span class="loss-val">${logs.loss.toFixed(4)}</span>  acc: <span class="loss-val">${(logs.acc||logs.accuracy||0).toFixed(4)}</span>\n`;
+          logBox.scrollTop = logBox.scrollHeight;
+        }
+        await tf.nextFrame();
+      }
+    }
+  });
+
+  logBox.innerHTML += `\n<span class="done">✅ Training complete!</span>`;
+  xs.dispose(); ys.dispose();
+  btn.disabled = false;
+  document.getElementById('predictBtn').disabled = false;
+});
+
+// ── Predict ───────────────────────────────────────────────
+document.getElementById('predictBtn').addEventListener('click', () => {
+  const text = document.getElementById('testInput').value.trim();
+  if (!text || !model) return;
+  const seq = textToSeq(text);
+  const input = tf.tensor2d([seq]);
+  const pred = model.predict(input);
+  const score = pred.dataSync()[0];
+  input.dispose(); pred.dispose();
+
+  const isPos = score >= 0.5;
+  const conf = isPos ? score : 1 - score;
+  const box = document.getElementById('resultBox');
+  box.className = `result-box ${isPos ? 'pos' : 'neg'}`;
+  box.style.display = 'block';
+  document.getElementById('resultEmoji').textContent = isPos ? '😊' : '😞';
+  document.getElementById('resultLabel').textContent = isPos ? 'POSITIVE' : 'NEGATIVE';
+  document.getElementById('resultConf').textContent = (conf * 100).toFixed(1) + '%';
+  document.getElementById('confFill').style.width = (conf * 100) + '%';
+});
+
+document.getElementById('testInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('predictBtn').click();
+});
+</script>
+</body>
+</html>
