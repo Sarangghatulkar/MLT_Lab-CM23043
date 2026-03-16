@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Assignment 2 – Custom Sentences & Confidence Scores</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Playfair+Display:wght@700;900&display=swap" rel="stylesheet"/>
+  <style>
+    :root {
+      --bg: #fdf8f2;
+      --surface: #ffffff;
+      --border: #e8e0d5;
+      --pos: #2d6a4f;
+      --pos-bg: #d8f3dc;
+      --neg: #c1121f;
+      --neg-bg: #ffe5e5;
+      --neu: #6c6c8a;
+      --neu-bg: #f0f0f8;
+      --text: #1a1a2e;
+      --muted: #9999aa;
+      --accent: #e76f51;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'DM Mono', monospace;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 40px 20px 60px;
+    }
+    .header { text-align: center; margin-bottom: 36px; }
+    .tag {
+      display: inline-block;
+      background: var(--accent);
+      color: #fff;
+      font-size: 0.7rem;
+      padding: 3px 14px;
+      border-radius: 20px;
+      letter-spacing: 1.5px;
+      margin-bottom: 10px;
+    }
+    h1 {
+      font-family: 'Playfair Display', serif;
+      font-size: 2.2rem;
+      font-weight: 900;
+      color: var(--text);
+      line-height: 1.2;
+    }
+    h1 em { color: var(--accent); font-style: normal; }
+    .subtitle { color: var(--muted); font-size: 0.8rem; margin-top: 8px; }
+
+    /* Train first notice */
+    .notice {
+      max-width: 780px;
+      margin: 0 auto 24px;
+      background: #fff8f0;
+      border: 1px solid #ffd6b3;
+      border-radius: 10px;
+      padding: 12px 18px;
+      font-size: 0.78rem;
+      color: #7a4f00;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .notice.trained { background: #f0fdf0; border-color: #b3ddb3; color: #1a5c1a; }
+
+    /* Input area */
+    .input-area {
+      max-width: 780px;
+      margin: 0 auto 28px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 24px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+    }
+    .input-area label {
+      display: block;
+      font-size: 0.7rem;
+      color: var(--muted);
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+    textarea {
+      width: 100%;
+      background: #faf8f5;
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 12px 14px;
+      border-radius: 8px;
+      font-family: 'DM Mono', monospace;
+      font-size: 0.85rem;
+      resize: vertical;
+      min-height: 100px;
+      outline: none;
+      line-height: 1.6;
+    }
+    textarea:focus { border-color: var(--accent); }
+    .hint { font-size: 0.72rem; color: var(--muted); margin-top: 6px; }
+    .btn-row { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+    .btn-primary {
+      background: var(--text);
+      color: #fff;
+      border: none;
+      padding: 11px 28px;
+      border-radius: 8px;
+      font-family: 'DM Mono', monospace;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn-primary:hover { background: #333; }
+    .btn-primary:disabled { opacity: 0.35; cursor: not-allowed; }
+    .btn-secondary {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      padding: 11px 20px;
+      border-radius: 8px;
+      font-family: 'DM Mono', monospace;
+      font-size: 0.82rem;
+      cursor: pointer;
+      transition: border-color 0.2s;
+    }
+    .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* Train section */
+    #trainSection {
+      max-width: 780px;
+      margin: 0 auto 28px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px 24px;
+    }
+    #trainSection .sec-title {
+      font-size: 0.7rem;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
+    .train-btn-full {
+      width: 100%;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      padding: 12px;
+      border-radius: 8px;
+      font-family: 'DM Mono', monospace;
+      font-size: 0.9rem;
+      cursor: pointer;
+      font-weight: 500;
+      transition: opacity 0.2s;
+    }
+    .train-btn-full:hover { opacity: 0.88; }
+    .train-btn-full:disabled { opacity: 0.35; cursor: not-allowed; }
+    #trainProgress { font-size: 0.75rem; color: var(--muted); margin-top: 8px; min-height: 18px; }
+
+    /* Results */
+    #resultsArea { max-width: 780px; margin: 0 auto; }
+    .result-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px 20px;
+      margin-bottom: 14px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.04);
+      animation: fadeIn 0.3s ease;
+    }
+    @keyframes fadeIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
+
+    .result-text {
+      font-size: 0.85rem;
+      color: var(--text);
+      margin-bottom: 14px;
+      line-height: 1.5;
+      border-left: 3px solid var(--border);
+      padding-left: 12px;
+    }
+    .result-meta {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .sentiment-badge {
+      font-size: 0.72rem;
+      font-weight: 500;
+      padding: 4px 14px;
+      border-radius: 20px;
+      letter-spacing: 1px;
+    }
+    .sentiment-badge.pos { background: var(--pos-bg); color: var(--pos); }
+    .sentiment-badge.neg { background: var(--neg-bg); color: var(--neg); }
+    .sentiment-badge.neu { background: var(--neu-bg); color: var(--neu); }
+
+    .conf-section { flex: 1; min-width: 200px; }
+    .conf-label { font-size: 0.7rem; color: var(--muted); margin-bottom: 5px; display: flex; justify-content: space-between; }
+    .conf-track { height: 8px; background: #eee; border-radius: 5px; overflow: hidden; }
+    .conf-fill { height: 100%; border-radius: 5px; transition: width 0.6s ease; }
+    .conf-fill.pos { background: var(--pos); }
+    .conf-fill.neg { background: var(--neg); }
+    .conf-fill.neu { background: var(--neu); }
+
+    .interp { font-size: 0.75rem; color: var(--muted); margin-top: 8px; line-height: 1.5; }
+    .interp strong { color: var(--text); }
+
+    /* Stats panel */
+    #statsPanel {
+      max-width: 780px;
+      margin: 0 auto 24px;
+      display: none;
+    }
+    .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+    @media(max-width:500px){ .stats-grid { grid-template-columns: 1fr 1fr; } }
+    .stat-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      text-align: center;
+    }
+    .stat-val { font-family: 'Playfair Display', serif; font-size: 1.8rem; font-weight: 900; }
+    .stat-val.pos { color: var(--pos); }
+    .stat-val.neg { color: var(--neg); }
+    .stat-val.neu { color: var(--neu); }
+    .stat-lbl { font-size: 0.68rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-top: 4px; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div class="tag">ASSIGNMENT 2</div>
+  <h1>Test <em>Custom</em> Sentences</h1>
+  <p class="subtitle">Classify text & interpret confidence scores</p>
+</div>
+
+<!-- Train Model First -->
+<div id="trainSection">
+  <div class="sec-title">Step 1 — Train the Model</div>
+  <button class="train-btn-full" id="trainBtn">⚡ Train Sentiment Model (Quick)</button>
+  <div id="trainProgress">Model not trained yet. Click to train.</div>
+</div>
+
+<div class="notice" id="noticeBar">
+  ⚠️ Train the model first before classifying sentences.
+</div>
+
+<!-- Input -->
+<div class="input-area">
+  <label>Step 2 — Enter sentences (one per line)</label>
+  <textarea id="inputText" placeholder="This movie was absolutely amazing!&#10;I completely hated this product.&#10;The service was okay I guess.&#10;Best day of my life, truly wonderful!&#10;What a terrible and boring experience."></textarea>
+  <div class="hint">💡 Try mixed sentences — positive, negative, and ambiguous ones</div>
+  <div class="btn-row">
+    <button class="btn-primary" id="analyzeBtn" disabled>▶ Analyze All</button>
+    <button class="btn-secondary" id="loadSamples">Load Sample Sentences</button>
+    <button class="btn-secondary" id="clearBtn">Clear</button>
+  </div>
+</div>
+
+<!-- Stats -->
+<div id="statsPanel">
+  <div class="stats-grid" id="statsGrid"></div>
+</div>
+
+<!-- Results -->
+<div id="resultsArea"></div>
+
+<script>
+// ── Same dataset + model as Assignment 1 ─────────────────
+const trainingData = [
+  { text: "I love this product it is amazing", label: 1 },
+  { text: "This is absolutely wonderful and great", label: 1 },
+  { text: "Fantastic experience highly recommend", label: 1 },
+  { text: "I am so happy with this purchase", label: 1 },
+  { text: "Excellent quality very satisfied", label: 1 },
+  { text: "Best thing I have ever bought", label: 1 },
+  { text: "Really impressed with the results", label: 1 },
+  { text: "Superb performance exceeds expectations", label: 1 },
+  { text: "Truly outstanding service and quality", label: 1 },
+  { text: "Wonderful experience would buy again", label: 1 },
+  { text: "This is terrible I hate it", label: 0 },
+  { text: "Awful product complete waste of money", label: 0 },
+  { text: "Very disappointed with this purchase", label: 0 },
+  { text: "Horrible experience never again", label: 0 },
+  { text: "Poor quality broke after one day", label: 0 },
+  { text: "Worst product I have ever used", label: 0 },
+  { text: "Completely useless total disappointment", label: 0 },
+  { text: "Bad quality not worth the price", label: 0 },
+  { text: "Terrible service very unhappy", label: 0 },
+  { text: "Dreadful product absolutely awful", label: 0 },
+];
+
+const VOCAB_SIZE = 200, MAX_LEN = 10;
+let wordIndex = {}, model = null;
+
+function buildVocab() {
+  let idx = 1;
+  trainingData.forEach(d => d.text.toLowerCase().split(' ').forEach(w => { if (!wordIndex[w]) wordIndex[w] = idx++; }));
+}
+
+function textToSeq(text) {
+  const words = text.toLowerCase().replace(/[^a-z ]/g, '').split(' ');
+  const padded = new Array(MAX_LEN).fill(0);
+  words.slice(0, MAX_LEN).forEach((w, i) => padded[i] = wordIndex[w] || 0);
+  return padded;
+}
+
+function buildModel() {
+  const m = tf.sequential();
+  m.add(tf.layers.embedding({ inputDim: VOCAB_SIZE, outputDim: 16, inputLength: MAX_LEN }));
+  m.add(tf.layers.simpleRNN({ units: 16, activation: 'tanh' }));
+  m.add(tf.layers.dense({ units: 1, activation: 'sigmoid' }));
+  m.compile({ optimizer: tf.train.adam(0.01), loss: 'binaryCrossentropy', metrics: ['accuracy'] });
+  return m;
+}
+
+const trainBtn = document.getElementById('trainBtn');
+const trainProgress = document.getElementById('trainProgress');
+const analyzeBtn = document.getElementById('analyzeBtn');
+const noticeBar = document.getElementById('noticeBar');
+
+trainBtn.addEventListener('click', async () => {
+  trainBtn.disabled = true;
+  buildVocab();
+  model = buildModel();
+  const xs = tf.tensor2d(trainingData.map(d => textToSeq(d.text)));
+  const ys = tf.tensor1d(trainingData.map(d => d.label), 'float32');
+
+  for (let ep = 0; ep < 40; ep++) {
+    const h = await model.fit(xs, ys, { epochs: 1, shuffle: true });
+    trainProgress.textContent = `Training... epoch ${ep+1}/40 — loss: ${h.history.loss[0].toFixed(4)}`;
+    await tf.nextFrame();
+  }
+  xs.dispose(); ys.dispose();
+  trainProgress.textContent = '✅ Model trained and ready!';
+  analyzeBtn.disabled = false;
+  noticeBar.className = 'notice trained';
+  noticeBar.textContent = '✅ Model is trained! Enter sentences below and click Analyze All.';
+});
+
+// ── Confidence interpretation ─────────────────────────────
+function interpret(score) {
+  if (score >= 0.85) return { cls: 'pos', label: '😊 POSITIVE', interp: 'Very high confidence positive sentiment. Strong positive language detected.', conf: score };
+  if (score >= 0.65) return { cls: 'pos', label: '🙂 POSITIVE', interp: 'Moderate confidence positive. Some positive words present.', conf: score };
+  if (score <= 0.15) return { cls: 'neg', label: '😡 NEGATIVE', interp: 'Very high confidence negative sentiment. Strong negative language detected.', conf: 1-score };
+  if (score <= 0.35) return { cls: 'neg', label: '😞 NEGATIVE', interp: 'Moderate confidence negative. Some negative words present.', conf: 1-score };
+  return { cls: 'neu', label: '😐 NEUTRAL / MIXED', interp: 'Model is uncertain — the sentence may be ambiguous, neutral, or contain mixed signals.', conf: Math.abs(score - 0.5) * 2 };
+}
+
+analyzeBtn.addEventListener('click', () => {
+  const lines = document.getElementById('inputText').value.split('\n').map(l => l.trim()).filter(Boolean);
+  if (!lines.length || !model) return;
+
+  const results = lines.map(line => {
+    const seq = textToSeq(line);
+    const input = tf.tensor2d([seq]);
+    const raw = model.predict(input).dataSync()[0];
+    input.dispose();
+    return { text: line, score: raw, ...interpret(raw) };
+  });
+
+  // Stats
+  const pos = results.filter(r => r.cls === 'pos').length;
+  const neg = results.filter(r => r.cls === 'neg').length;
+  const neu = results.filter(r => r.cls === 'neu').length;
+  const avgConf = (results.reduce((s, r) => s + r.conf, 0) / results.length * 100).toFixed(1);
+
+  const statsPanel = document.getElementById('statsPanel');
+  document.getElementById('statsGrid').innerHTML = `
+    <div class="stat-box"><div class="stat-val pos">${pos}</div><div class="stat-lbl">Positive</div></div>
+    <div class="stat-box"><div class="stat-val neg">${neg}</div><div class="stat-lbl">Negative</div></div>
+    <div class="stat-box"><div class="stat-val neu">${neu}</div><div class="stat-lbl">Neutral/Mixed</div></div>
+    <div class="stat-box"><div class="stat-val" style="color:var(--accent)">${avgConf}%</div><div class="stat-lbl">Avg Confidence</div></div>
+    <div class="stat-box"><div class="stat-val" style="color:var(--text)">${results.length}</div><div class="stat-lbl">Total Sentences</div></div>
+    <div class="stat-box"><div class="stat-val" style="color:var(--accent)">${((pos/results.length)*100).toFixed(0)}%</div><div class="stat-lbl">Pos Rate</div></div>
+  `;
+  statsPanel.style.display = 'block';
+
+  const area = document.getElementById('resultsArea');
+  area.innerHTML = `<div style="font-size:0.7rem;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;max-width:780px;margin:0 auto 12px;">Results — ${results.length} sentences analyzed</div>`;
+
+  results.forEach((r, i) => {
+    const card = document.createElement('div');
+    card.className = 'result-card';
+    const confPct = (r.conf * 100).toFixed(1);
+    card.innerHTML = `
+      <div class="result-text">${r.text}</div>
+      <div class="result-meta">
+        <span class="sentiment-badge ${r.cls}">${r.label}</span>
+        <div class="conf-section">
+          <div class="conf-label"><span>Confidence</span><span>${confPct}%</span></div>
+          <div class="conf-track"><div class="conf-fill ${r.cls}" style="width:${confPct}%"></div></div>
+        </div>
+      </div>
+      <div class="interp">💡 <strong>Interpretation:</strong> ${r.interp} Raw score: <strong>${r.score.toFixed(4)}</strong></div>
+    `;
+    area.appendChild(card);
+  });
+});
+
+document.getElementById('loadSamples').addEventListener('click', () => {
+  document.getElementById('inputText').value =
+`This movie was absolutely amazing!
+I completely hated this product.
+The service was okay I guess.
+Best day of my life, truly wonderful!
+What a terrible and boring experience.
+Not bad but could be better.
+I love how great this works perfectly.
+Awful experience worst ever.`;
+});
+
+document.getElementById('clearBtn').addEventListener('click', () => {
+  document.getElementById('inputText').value = '';
+  document.getElementById('resultsArea').innerHTML = '';
+  document.getElementById('statsPanel').style.display = 'none';
+});
+</script>
+</body>
+</html>
