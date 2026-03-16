@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Image Classification - MobileNet</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.0/dist/mobilenet.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #f0f4f8;
+      color: #222;
+      padding: 30px 20px;
+      max-width: 520px;
+      margin: auto;
+    }
+
+    h1 {
+      text-align: center;
+      font-size: 20px;
+      font-weight: 700;
+      color: #1a1a2e;
+      margin-bottom: 4px;
+    }
+
+    .subtitle {
+      text-align: center;
+      font-size: 13px;
+      color: #888;
+      margin-bottom: 24px;
+    }
+
+    .card {
+      background: white;
+      border-radius: 10px;
+      padding: 20px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+
+    .upload-area {
+      border: 2px dashed #4a90e2;
+      border-radius: 8px;
+      padding: 22px;
+      text-align: center;
+      cursor: pointer;
+      background: #f7fbff;
+    }
+
+    .upload-area input { display: none; }
+
+    .upload-area label {
+      cursor: pointer;
+      font-size: 14px;
+      color: #4a90e2;
+      font-weight: 600;
+    }
+
+    #preview-img {
+      display: none;
+      max-width: 100%;
+      max-height: 240px;
+      margin: 14px auto 0;
+      border-radius: 8px;
+      border: 1px solid #ddd;
+    }
+
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 10px;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      cursor: pointer;
+      font-weight: 600;
+      margin-top: 12px;
+      background: #4a90e2;
+      color: white;
+      transition: opacity 0.2s;
+    }
+
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    .status {
+      font-size: 12px;
+      margin-top: 8px;
+      color: #888;
+      text-align: center;
+      min-height: 18px;
+    }
+
+    .result-box { margin-top: 16px; }
+
+    .prediction-bar { margin-bottom: 10px; }
+
+    .pred-label {
+      font-size: 13px;
+      margin-bottom: 4px;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .bar-track {
+      height: 10px;
+      background: #e8e8e8;
+      border-radius: 5px;
+      overflow: hidden;
+    }
+
+    .bar-fill {
+      height: 100%;
+      border-radius: 5px;
+      background: #4a90e2;
+      transition: width 0.5s ease;
+    }
+
+    .loading-spinner {
+      display: inline-block;
+      width: 12px; height: 12px;
+      border: 2px solid #ccc;
+      border-top-color: #4a90e2;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      vertical-align: middle;
+      margin-right: 4px;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+  <h1>Image Classification with Pre-trained Model (MobileNet)</h1>
+  <p class="subtitle">MLT Practical &nbsp;|&nbsp; CM23043</p>
+
+  <div class="card">
+    <div class="upload-area">
+      <input type="file" id="fileInput" accept="image/*" onchange="handleUpload(event)" />
+      <label for="fileInput">📁 Click to Upload an Image</label>
+      <img id="preview-img" alt="preview" />
+    </div>
+
+    <button class="btn" id="classifyBtn" onclick="classifySingle()" disabled>
+      Classify with MobileNet
+    </button>
+
+    <p class="status" id="classifyStatus">Load an image to begin</p>
+
+    <div class="result-box" id="singleResult"></div>
+  </div>
+
+<script>
+  let mobileNetModel = null;
+  let currentImage = null;
+
+  // Auto-load model on page load
+  window.onload = async () => {
+    const st = document.getElementById('classifyStatus');
+    st.innerHTML = '<span class="loading-spinner"></span> Loading MobileNet model...';
+    try {
+      mobileNetModel = await mobilenet.load({ version: 2, alpha: 1.0 });
+      st.textContent = '✅ Model ready. Upload an image to classify.';
+    } catch(e) {
+      st.textContent = '❌ Error loading model: ' + e.message;
+    }
+  };
+
+  function handleUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = document.getElementById('preview-img');
+      img.src = e.target.result;
+      img.style.display = 'block';
+      img.onload = () => { currentImage = img; };
+    };
+    reader.readAsDataURL(file);
+    document.getElementById('classifyBtn').disabled = false;
+    document.getElementById('classifyStatus').textContent = 'Image uploaded. Click Classify.';
+    document.getElementById('singleResult').innerHTML = '';
+  }
+
+  async function classifySingle() {
+    if (!mobileNetModel) return alert('Model is still loading, please wait.');
+    if (!currentImage)   return alert('Please upload an image first.');
+
+    const st = document.getElementById('classifyStatus');
+    st.innerHTML = '<span class="loading-spinner"></span> Classifying...';
+    document.getElementById('singleResult').innerHTML = '';
+
+    try {
+      const preds = await mobileNetModel.classify(currentImage, 3);
+      document.getElementById('singleResult').innerHTML = renderPredictions(preds);
+      st.textContent = '✅ Top-3 predictions shown below.';
+    } catch(e) {
+      st.textContent = '❌ Error: ' + e.message;
+    }
+  }
+
+  function renderPredictions(preds) {
+    return preds.map((p, i) => {
+      const pct = (p.probability * 100).toFixed(1);
+      return `
+        <div class="prediction-bar">
+          <div class="pred-label">
+            <span>#${i+1} &nbsp;${p.className.split(',')[0]}</span>
+            <strong>${pct}%</strong>
+          </div>
+          <div class="bar-track">
+            <div class="bar-fill" style="width:${pct}%"></div>
+          </div>
+        </div>`;
+    }).join('');
+  }
+</script>
+</body>
+</html>
