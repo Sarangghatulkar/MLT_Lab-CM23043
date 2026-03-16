@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Assignment 1 – MobileNet Top-3 Predictions</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.0/dist/mobilenet.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Courier New', monospace;
+      background: #0d0d0d;
+      color: #e0e0e0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 20px;
+    }
+    h1 {
+      font-size: 1.6rem;
+      color: #00e5ff;
+      margin-bottom: 6px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+    .subtitle {
+      color: #666;
+      font-size: 0.85rem;
+      margin-bottom: 30px;
+    }
+    .card {
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 12px;
+      padding: 30px;
+      width: 100%;
+      max-width: 520px;
+    }
+    label.upload-btn {
+      display: block;
+      background: #00e5ff;
+      color: #000;
+      text-align: center;
+      padding: 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: bold;
+      font-size: 0.95rem;
+      margin-bottom: 20px;
+      transition: background 0.2s;
+    }
+    label.upload-btn:hover { background: #00bcd4; }
+    input[type="file"] { display: none; }
+    #preview {
+      width: 100%;
+      max-height: 280px;
+      object-fit: contain;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      display: none;
+      border: 1px solid #333;
+    }
+    #classifyBtn {
+      width: 100%;
+      padding: 12px;
+      background: #1e1e1e;
+      border: 1px solid #00e5ff;
+      color: #00e5ff;
+      border-radius: 8px;
+      cursor: pointer;
+      font-family: 'Courier New', monospace;
+      font-size: 0.95rem;
+      margin-bottom: 20px;
+      transition: background 0.2s;
+    }
+    #classifyBtn:hover { background: #002a30; }
+    #classifyBtn:disabled { opacity: 0.4; cursor: not-allowed; }
+    #status {
+      font-size: 0.82rem;
+      color: #888;
+      margin-bottom: 16px;
+      min-height: 18px;
+    }
+    .results-title {
+      font-size: 0.8rem;
+      color: #555;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 12px;
+    }
+    .prediction {
+      margin-bottom: 14px;
+    }
+    .pred-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 5px;
+    }
+    .pred-label { font-size: 0.9rem; color: #ddd; }
+    .pred-pct {
+      font-size: 0.85rem;
+      color: #00e5ff;
+      font-weight: bold;
+    }
+    .bar-track {
+      height: 6px;
+      background: #2a2a2a;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #00e5ff, #007a90);
+      border-radius: 4px;
+      transition: width 0.6s ease;
+    }
+    .badge {
+      display: inline-block;
+      background: #003a42;
+      color: #00e5ff;
+      font-size: 0.65rem;
+      padding: 2px 8px;
+      border-radius: 20px;
+      margin-right: 6px;
+    }
+  </style>
+</head>
+<body>
+  <h1>🧠 MobileNet Classifier</h1>
+  <p class="subtitle">Assignment 1 — Top-3 Predictions</p>
+
+  <div class="card">
+    <label class="upload-btn" for="imgUpload">📁 Upload an Image</label>
+    <input type="file" id="imgUpload" accept="image/*" />
+    <img id="preview" alt="Preview" />
+    <button id="classifyBtn" disabled>Classify Image</button>
+    <div id="status">Loading MobileNet model...</div>
+    <div class="results-title">Top-3 Predictions</div>
+    <div id="results"></div>
+  </div>
+
+  <script>
+    let model = null;
+    let imgElement = document.getElementById('preview');
+    const status = document.getElementById('status');
+    const results = document.getElementById('results');
+    const classifyBtn = document.getElementById('classifyBtn');
+
+    // Load MobileNet
+    async function loadModel() {
+      status.textContent = '⏳ Loading MobileNet... please wait';
+      model = await mobilenet.load();
+      status.textContent = '✅ Model ready! Upload an image to classify.';
+      if (imgElement.src) classifyBtn.disabled = false;
+    }
+
+    // Handle image upload
+    document.getElementById('imgUpload').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        imgElement.src = ev.target.result;
+        imgElement.style.display = 'block';
+        results.innerHTML = '';
+        status.textContent = model ? '✅ Ready to classify!' : '⏳ Model still loading...';
+        if (model) classifyBtn.disabled = false;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    // Classify
+    classifyBtn.addEventListener('click', async () => {
+      if (!model || !imgElement.src) return;
+      classifyBtn.disabled = true;
+      status.textContent = '🔍 Classifying...';
+      results.innerHTML = '';
+
+      const predictions = await model.classify(imgElement, 3);
+      status.textContent = `✅ Done! Showing top-3 predictions.`;
+
+      const ranks = ['🥇', '🥈', '🥉'];
+      predictions.forEach((pred, i) => {
+        const pct = (pred.probability * 100).toFixed(1);
+        const div = document.createElement('div');
+        div.className = 'prediction';
+        div.innerHTML = `
+          <div class="pred-row">
+            <span class="pred-label"><span class="badge">${ranks[i]}</span>${pred.className}</span>
+            <span class="pred-pct">${pct}%</span>
+          </div>
+          <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
+        `;
+        results.appendChild(div);
+      });
+
+      classifyBtn.disabled = false;
+    });
+
+    loadModel();
+  </script>
+</body>
+</html>
