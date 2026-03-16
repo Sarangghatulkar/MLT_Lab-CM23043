@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Assignment 2 – Label Overlay on Video</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.0/dist/mobilenet.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #f0f4f8;
+      color: #222;
+      padding: 24px 16px 48px;
+    }
+    .container { max-width: 680px; margin: 0 auto; }
+
+    .header {
+      background: #14532d;
+      color: #fff;
+      border-radius: 10px;
+      padding: 18px 22px;
+      margin-bottom: 18px;
+    }
+    .badge {
+      display: inline-block;
+      background: rgba(255,255,255,0.2);
+      font-size: 11px;
+      padding: 2px 10px;
+      border-radius: 20px;
+      margin-bottom: 8px;
+      letter-spacing: 1px;
+    }
+    .header h2 { font-size: 1.2rem; font-weight: 700; }
+    .header p  { font-size: 13px; opacity: 0.75; margin-top: 4px; }
+
+    .status-bar {
+      background: #fff;
+      border: 1px solid #dde3ed;
+      border-radius: 8px;
+      padding: 10px 16px;
+      font-size: 13px;
+      color: #444;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .dot { width: 9px; height: 9px; border-radius: 50%; background: #f59e0b; flex-shrink: 0; }
+    .dot.green { background: #22c55e; animation: pulse 1.4s infinite; }
+    .dot.red   { background: #ef4444; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+    /* Canvas wrapper with a nice border */
+    .canvas-wrap {
+      background: #111;
+      border-radius: 10px;
+      overflow: hidden;
+      border: 2px solid #dde3ed;
+      margin-bottom: 14px;
+      position: relative;
+    }
+    video   { display: none; }
+    canvas  { display: block; width: 100%; }
+
+    .btn-row { display: flex; gap: 10px; margin-bottom: 18px; flex-wrap: wrap; }
+    .btn {
+      padding: 9px 20px; border: none; border-radius: 7px;
+      font-size: 13px; font-family: 'Segoe UI', sans-serif;
+      font-weight: 600; cursor: pointer;
+      transition: opacity .2s, transform .1s;
+    }
+    .btn:hover:not(:disabled) { opacity: .88; transform: translateY(-1px); }
+    .btn:disabled { opacity: .4; cursor: not-allowed; transform: none; }
+    .btn-green  { background: #14532d; color: #fff; }
+    .btn-danger { background: #ef4444; color: #fff; }
+
+    /* Info cards */
+    .info-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    @media(max-width:440px){ .info-grid { grid-template-columns: 1fr; } }
+    .info-card {
+      background: #fff;
+      border: 1px solid #dde3ed;
+      border-radius: 9px;
+      padding: 14px 16px;
+    }
+    .info-card .label {
+      font-size: 11px; color: #888;
+      text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px;
+    }
+    .info-card .value {
+      font-size: 15px; font-weight: 700; color: #14532d;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+
+    /* How it works */
+    .how-box {
+      background: #fff;
+      border: 1px solid #dde3ed;
+      border-left: 4px solid #14532d;
+      border-radius: 8px;
+      padding: 12px 16px;
+      font-size: 13px;
+      color: #444;
+      line-height: 1.7;
+    }
+    .how-box strong { color: #14532d; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <div class="header">
+    <div class="badge">ASSIGNMENT 2</div>
+    <h2>Label Overlay on Video Feed</h2>
+    <p>Classification labels and confidence scores drawn directly on the live video canvas</p>
+  </div>
+
+  <div class="status-bar">
+    <div class="dot" id="dot"></div>
+    <span id="statusText">Loading MobileNet model, please wait...</span>
+  </div>
+
+  <div class="canvas-wrap">
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="canvas"></canvas>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn btn-green"  id="startBtn" disabled>▶ Start Webcam</button>
+    <button class="btn btn-danger" id="stopBtn"  disabled>■ Stop</button>
+  </div>
+
+  <!-- Live info cards -->
+  <div class="info-grid">
+    <div class="info-card">
+      <div class="label">Top Prediction</div>
+      <div class="value" id="topLabel">—</div>
+    </div>
+    <div class="info-card">
+      <div class="label">Confidence</div>
+      <div class="value" id="topConf">—</div>
+    </div>
+    <div class="info-card">
+      <div class="label">2nd Prediction</div>
+      <div class="value" id="label2">—</div>
+    </div>
+    <div class="info-card">
+      <div class="label">3rd Prediction</div>
+      <div class="value" id="label3">—</div>
+    </div>
+  </div>
+
+  <div class="how-box">
+    <strong>How overlay works:</strong> A hidden &lt;video&gt; element captures the webcam feed.
+    Each frame is drawn to a &lt;canvas&gt; using <strong>drawImage()</strong>.
+    MobileNet classifies the frame every 500 ms and results are drawn on top of
+    the canvas using <strong>fillText()</strong> with a semi-transparent background box.
+    The video canvas and the inference run <em>independently</em> so the feed stays smooth.
+  </div>
+
+</div>
+<script>
+  let model = null, stream = null, animId = null, classifyTimer = null;
+  let lastPreds = [];
+
+  const video  = document.getElementById('video');
+  const canvas = document.getElementById('canvas');
+  const ctx    = canvas.getContext('2d');
+  const dot    = document.getElementById('dot');
+  const statusTx = document.getElementById('statusText');
+
+  function setStatus(msg, color) {
+    statusTx.textContent = msg;
+    dot.className = 'dot ' + (color || '');
+  }
+
+  mobilenet.load().then(m => {
+    model = m;
+    setStatus('Model loaded! Click "Start Webcam" to begin.', 'green');
+    document.getElementById('startBtn').disabled = false;
+  });
+
+  document.getElementById('startBtn').addEventListener('click', async () => {
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      video.srcObject = stream;
+      await new Promise(r => video.onloadedmetadata = r);
+
+      canvas.width  = video.videoWidth  || 640;
+      canvas.height = video.videoHeight || 480;
+
+      document.getElementById('startBtn').disabled = true;
+      document.getElementById('stopBtn').disabled  = false;
+      setStatus('Webcam active — labels overlaid on the feed.', 'green');
+
+      // Draw loop
+      (function drawLoop() {
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        drawOverlay();
+        animId = requestAnimationFrame(drawLoop);
+      })();
+
+      // Classify every 500 ms
+      classifyTimer = setInterval(async () => {
+        if (video.readyState < 2) return;
+        lastPreds = await model.classify(video, 3);
+        // Update info cards
+        if (lastPreds[0]) {
+          document.getElementById('topLabel').textContent = lastPreds[0].className.split(',')[0];
+          document.getElementById('topConf').textContent  = (lastPreds[0].probability * 100).toFixed(1) + '%';
+        }
+        if (lastPreds[1]) document.getElementById('label2').textContent = lastPreds[1].className.split(',')[0];
+        if (lastPreds[2]) document.getElementById('label3').textContent = lastPreds[2].className.split(',')[0];
+      }, 500);
+
+    } catch(e) {
+      setStatus('Webcam error: ' + e.message, 'red');
+    }
+  });
+
+  document.getElementById('stopBtn').addEventListener('click', () => {
+    if (stream) stream.getTracks().forEach(t => t.stop());
+    if (animId) cancelAnimationFrame(animId);
+    if (classifyTimer) clearInterval(classifyTimer);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    lastPreds = [];
+    document.getElementById('startBtn').disabled = false;
+    document.getElementById('stopBtn').disabled  = true;
+    setStatus('Webcam stopped.', 'red');
+  });
+
+  function drawOverlay() {
+    if (!lastPreds.length) return;
+    const lineH = 26, pad = 10, boxW = 300;
+    const boxH = lastPreds.length * lineH + pad;
+
+    // Background box
+    ctx.fillStyle = 'rgba(0,0,0,0.52)';
+    roundRect(ctx, 10, 10, boxW, boxH, 8);
+    ctx.fill();
+
+    // Labels
+    lastPreds.forEach((p, i) => {
+      const label = `${i+1}. ${p.className.split(',')[0]}   ${(p.probability*100).toFixed(1)}%`;
+      ctx.font = i === 0 ? 'bold 15px Segoe UI' : '13px Segoe UI';
+      ctx.fillStyle = i === 0 ? '#FFD700' : i === 1 ? '#ffffff' : '#bbbbbb';
+      ctx.shadowColor = '#000'; ctx.shadowBlur = 3;
+      ctx.fillText(label, 22, 30 + i * lineH);
+    });
+    ctx.shadowBlur = 0;
+
+    // LIVE badge top-right
+    ctx.fillStyle = 'rgba(220,38,38,0.85)';
+    roundRect(ctx, canvas.width - 62, 10, 52, 24, 5);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 12px Segoe UI';
+    ctx.fillText('● LIVE', canvas.width - 57, 27);
+  }
+
+  function roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+  }
+</script>
+</body>
+</html>
